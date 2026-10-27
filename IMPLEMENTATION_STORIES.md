@@ -1,4 +1,4 @@
-# Dev Theory Coach (THEORY_CORE) — Implementation Stories
+# Algo Theory Coach (THEORY_CORE) — Implementation Stories
 
 Stories and acceptance criteria for each milestone.  
 Parent map: [`EPIC_MAP.md`](./EPIC_MAP.md) · Runtime state: [`.agents/state.json`](./.agents/state.json) · Resources: [`RESOURCES.md`](./RESOURCES.md) · Critic: [`gauntlet/contract.md`](./gauntlet/contract.md)

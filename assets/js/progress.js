@@ -1,5 +1,5 @@
 /**
- * Progress writer for Dev Theory Coach (THEORY_CORE).
+ * Progress writer for Algo Theory Coach (THEORY_CORE).
  *
  * Storage key and fields MUST match src/ProgressSchema.php:
  *   KEY: theory_core_progress_v1

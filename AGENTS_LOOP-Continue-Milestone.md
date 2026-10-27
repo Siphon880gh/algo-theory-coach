@@ -1,6 +1,6 @@
 # AGENTS_LOOP — Continue Milestone
 
-Reusable loop prompt for advancing Dev Theory Coach (THEORY_CORE) through **all** milestone queues: P0 → post-P0 → later → advanced, until every ordered milestone is `done`.
+Reusable loop prompt for advancing Algo Theory Coach (THEORY_CORE) through **all** milestone queues: P0 → post-P0 → later → advanced, until every ordered milestone is `done`.
 
 Companions: [`.agents/state.json`](./.agents/state.json) · [`IMPLEMENTATION_STORIES.md`](./IMPLEMENTATION_STORIES.md) · [`EPIC_MAP.md`](./EPIC_MAP.md) · [`RESOURCES.md`](./RESOURCES.md) · [`gauntlet/contract.md`](./gauntlet/contract.md)
 
@@ -56,7 +56,7 @@ Read from `.agents/state.json` → `milestones`:
 
 ```markdown
 # OBJECTIVE
-Advance Dev Theory Coach (THEORY_CORE) through **every** milestone queue until global Done.
+Advance Algo Theory Coach (THEORY_CORE) through **every** milestone queue until global Done.
 
 Work queues (strict order), from `.agents/state.json` → `milestones`:
 1. `implementation_order` (P0 → MVP freeze)
@@ -77,7 +77,7 @@ Work queues (strict order), from `.agents/state.json` → `milestones`:
 - Execution rules: one milestone `in_progress` at a time; follow the active queue in order; do not invent milestones outside the queues
 - Auto-verify: `./vendor/bin/phpunit`
 - Local skills: `.agents/skills/*` (create or adapt when a task repeats)
-- Layout: `index.php` (sole front controller; also the `php -S` router), `src/`, `assets/js/progress.js`, `content/`, `tests/` as named in `IMPLEMENTATION_STORIES.md` global conventions. Mirror patterns from `../mental-math` and `../leetcode-coach`. Do not import their source
+- Layout: `index.php` (sole front controller; also the `php -S` router), `src/`, `assets/js/progress.js`, `content/`, `tests/` as named in `IMPLEMENTATION_STORIES.md` global conventions. Mirror patterns from `../mental-math` and `../algo-leetcode-coach`. Do not import their source
 
 # STEP-BY-STEP CADENCE
 1. **Orient**

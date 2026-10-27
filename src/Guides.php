@@ -228,7 +228,7 @@ final class Guides
         }
 
         return Layout::document(
-            'Guides — Dev Theory Coach',
+            'Guides — Algo Theory Coach',
             implode("\n", $parts),
             [
                 'mainClass' => 'guides-hub',

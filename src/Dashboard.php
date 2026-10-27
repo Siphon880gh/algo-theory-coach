@@ -62,7 +62,7 @@ final class Dashboard
 
         $parts = [];
         $parts[] = '<p class="eyebrow">Interview concepts · 15–25 min gaps</p>';
-        $parts[] = '<h1>Dev Theory Coach</h1>';
+        $parts[] = '<h1>Algo Theory Coach</h1>';
         $parts[] = '<p class="lede">Name the concept, the cost, or the force — then reject the usual wrong pick.</p>';
         if ($complete) {
             $parts[] = '<p class="path-complete" data-credential="beginner-path">Beginner path complete. Credential: beginner path finished.</p>';
@@ -76,7 +76,7 @@ final class Dashboard
             . ($gateOpen ? 'Case gate open' : 'Case gate locked') . '</p>';
 
         return Layout::document(
-            'Dev Theory Coach',
+            'Algo Theory Coach',
             implode("\n", $parts),
             [
                 'mainClass' => 'dashboard',

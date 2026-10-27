@@ -3,10 +3,10 @@
 // href is relative to the launcher. Valid PHP so php -l passes on 7.4.
 return [
     [
-        'name' => 'Dev Theory Coach',
+        'name' => 'Algo Theory Coach',
         'eyebrow' => 'Structures · algorithms · system design',
         'description' => 'Practice interview concepts with guides, step-by-step choices, and quizzes on sample prompts.',
-        'href' => 'dev-theory-coach/',
-        'cta' => 'Open Dev Theory Coach',
+        'href' => 'algo-theory-coach/',
+        'cta' => 'Open Algo Theory Coach',
     ],
 ];

@@ -1,4 +1,4 @@
-# Dev Theory Coach (THEORY_CORE)
+# Algo Theory Coach (THEORY_CORE)
 
 By Weng (Weng Fei Fung)
 
@@ -9,7 +9,7 @@ By Weng (Weng Fei Fung)
 
 Learn **developer interview concepts** — data structures, algorithms, system design, and design patterns — through guides, step-by-step choices, quizzes, timed drills, decision cases, and one-screen cheatsheets. Educational practice data — no live systems.
 
-This is not a problem bank and it does not run code. Problem practice lives in the sibling app leetcode-coach.
+This is not a problem bank and it does not run code. Problem practice lives in the sibling app algo-leetcode-coach.
 
 ---
 

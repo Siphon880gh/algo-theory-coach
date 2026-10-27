@@ -1,7 +1,7 @@
 ---
 name: add-quiz
 description: >-
-  Add one Dev Theory Coach quiz pack for a `slug`. Use when authoring `/quiz/{slug}`.
+  Add one Algo Theory Coach quiz pack for a `slug`. Use when authoring `/quiz/{slug}`.
 ---
 
 # Add a quiz pack

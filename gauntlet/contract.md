@@ -1,4 +1,4 @@
-# Gauntlet contract — Dev Theory Coach
+# Gauntlet contract — Algo Theory Coach
 
 The builder does not decide that a milestone is finished. A fresh critic does. Scores out of 10 are not a verdict.
 
@@ -13,7 +13,7 @@ Compare the running app with two local siblings. Do not import their code or the
 | Surface | Bar |
 |---------|-----|
 | Guides hub, track labels, coach rewind, progress reset | `../mental-math` |
-| Guide opens a coach on the same slug; a missing tree is a slot, not a 404 | `../leetcode-coach` |
+| Guide opens a coach on the same slug; a missing tree is a slot, not a 404 | `../algo-leetcode-coach` |
 | Which units exist, and in what order | `RESOURCES.md` and `context/curriculums/` |
 
 A self-written rubric supports these bars. It does not replace them.

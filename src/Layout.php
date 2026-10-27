@@ -81,7 +81,7 @@ JS;
         $parts[] = '<a class="skip-link" href="#main">Skip to content</a>';
         $parts[] = '<div class="' . e($shellClass) . '">';
         $parts[] = '<header class="site-header">';
-        $parts[] = '<a class="brand" href="' . e(url('/')) . '">Dev Theory Coach</a>';
+        $parts[] = '<a class="brand" href="' . e(url('/')) . '">Algo Theory Coach</a>';
         $parts[] = '<div class="header-tools">';
         $parts[] = '<nav class="site-nav" aria-label="Primary">';
         $parts[] = '<a class="nav-link' . $homeClass . '" href="' . e(url('/')) . '">Home</a>';

@@ -24,7 +24,7 @@ final class BasePathTest extends TestCase
 
     public function testAppBaseEmptyWhenScriptNameIsNotIndexPhp(): void
     {
-        $_SERVER['SCRIPT_NAME'] = '/Users/wengffung/dev/web/weng/trainer/dev-theory-coach/vendor/phpunit/phpunit/phpunit';
+        $_SERVER['SCRIPT_NAME'] = '/Users/wengffung/dev/web/weng/trainer/algo-theory-coach/vendor/phpunit/phpunit/phpunit';
         $this->assertSame('', app_base());
         $this->assertSame('/index.php?route=%2Fguides', url('/guides'));
         $this->assertSame('/index.php', url('/'));
@@ -40,39 +40,39 @@ final class BasePathTest extends TestCase
 
     public function testAppBaseFromSubdirectoryIndex(): void
     {
-        $_SERVER['SCRIPT_NAME'] = '/weng/trainer/dev-theory-coach/index.php';
-        $this->assertSame('/weng/trainer/dev-theory-coach', app_base());
-        $this->assertSame('/weng/trainer/dev-theory-coach/index.php', url('/'));
-        $this->assertSame('/weng/trainer/dev-theory-coach/index.php?route=%2Fguides', url('/guides'));
-        $this->assertSame('/weng/trainer/dev-theory-coach/index.php?route=%2Fguides%2Farrays', url('/guides/arrays'));
-        $this->assertSame('/weng/trainer/dev-theory-coach/assets/js/progress.js', asset_url('js/progress.js'));
-        $this->assertSame('/weng/trainer/dev-theory-coach/assets/js/progress.js', asset_url('/js/progress.js'));
+        $_SERVER['SCRIPT_NAME'] = '/weng/trainer/algo-theory-coach/index.php';
+        $this->assertSame('/weng/trainer/algo-theory-coach', app_base());
+        $this->assertSame('/weng/trainer/algo-theory-coach/index.php', url('/'));
+        $this->assertSame('/weng/trainer/algo-theory-coach/index.php?route=%2Fguides', url('/guides'));
+        $this->assertSame('/weng/trainer/algo-theory-coach/index.php?route=%2Fguides%2Farrays', url('/guides/arrays'));
+        $this->assertSame('/weng/trainer/algo-theory-coach/assets/js/progress.js', asset_url('js/progress.js'));
+        $this->assertSame('/weng/trainer/algo-theory-coach/assets/js/progress.js', asset_url('/js/progress.js'));
     }
 
     public function testRequestPathStripsInstallBaseForHome(): void
     {
-        $_SERVER['SCRIPT_NAME'] = '/weng/trainer/dev-theory-coach/index.php';
+        $_SERVER['SCRIPT_NAME'] = '/weng/trainer/algo-theory-coach/index.php';
 
-        $_SERVER['REQUEST_URI'] = '/weng/trainer/dev-theory-coach';
+        $_SERVER['REQUEST_URI'] = '/weng/trainer/algo-theory-coach';
         $this->assertSame('/', request_path());
 
-        $_SERVER['REQUEST_URI'] = '/weng/trainer/dev-theory-coach/';
+        $_SERVER['REQUEST_URI'] = '/weng/trainer/algo-theory-coach/';
         $this->assertSame('/', request_path());
 
-        $_SERVER['REQUEST_URI'] = '/weng/trainer/dev-theory-coach?x=1';
+        $_SERVER['REQUEST_URI'] = '/weng/trainer/algo-theory-coach?x=1';
         $this->assertSame('/', request_path());
     }
 
     public function testRequestPathStripsBaseForNestedRoutes(): void
     {
-        $_SERVER['SCRIPT_NAME'] = '/weng/trainer/dev-theory-coach/index.php';
-        $_SERVER['REQUEST_URI'] = '/weng/trainer/dev-theory-coach/guides/arrays';
+        $_SERVER['SCRIPT_NAME'] = '/weng/trainer/algo-theory-coach/index.php';
+        $_SERVER['REQUEST_URI'] = '/weng/trainer/algo-theory-coach/guides/arrays';
         $this->assertSame('/guides/arrays', request_path());
 
-        $_SERVER['REQUEST_URI'] = '/weng/trainer/dev-theory-coach/guides/';
+        $_SERVER['REQUEST_URI'] = '/weng/trainer/algo-theory-coach/guides/';
         $this->assertSame('/guides', request_path());
 
-        $_SERVER['REQUEST_URI'] = '/weng/trainer/dev-theory-coach/coach/arrays';
+        $_SERVER['REQUEST_URI'] = '/weng/trainer/algo-theory-coach/coach/arrays';
         $this->assertSame('/coach/arrays', request_path());
     }
 
@@ -88,25 +88,25 @@ final class BasePathTest extends TestCase
 
     public function testUrlEnsuresLeadingSlash(): void
     {
-        $_SERVER['SCRIPT_NAME'] = '/weng/trainer/dev-theory-coach/index.php';
-        $this->assertSame('/weng/trainer/dev-theory-coach/index.php?route=%2Fguides', url('guides'));
+        $_SERVER['SCRIPT_NAME'] = '/weng/trainer/algo-theory-coach/index.php';
+        $this->assertSame('/weng/trainer/algo-theory-coach/index.php?route=%2Fguides', url('guides'));
     }
 
     public function testRequestPathPrefersRouteQuery(): void
     {
-        $_SERVER['SCRIPT_NAME'] = '/trainer/dev-theory-coach/index.php';
-        $_SERVER['REQUEST_URI'] = '/trainer/dev-theory-coach/index.php?route=%2Fguides%2Farrays';
+        $_SERVER['SCRIPT_NAME'] = '/trainer/algo-theory-coach/index.php';
+        $_SERVER['REQUEST_URI'] = '/trainer/algo-theory-coach/index.php?route=%2Fguides%2Farrays';
         $_GET = ['route' => '/guides/arrays'];
         $this->assertSame('/guides/arrays', request_path());
 
         $_GET = ['route' => '/guides'];
-        $_SERVER['REQUEST_URI'] = '/trainer/dev-theory-coach/?route=%2Fguides';
+        $_SERVER['REQUEST_URI'] = '/trainer/algo-theory-coach/?route=%2Fguides';
         $this->assertSame('/guides', request_path());
     }
 
     public function testRouteBaseIncludesIndexPhp(): void
     {
-        $_SERVER['SCRIPT_NAME'] = '/trainer/dev-theory-coach/index.php';
-        $this->assertSame('/trainer/dev-theory-coach/index.php', route_base());
+        $_SERVER['SCRIPT_NAME'] = '/trainer/algo-theory-coach/index.php';
+        $this->assertSame('/trainer/algo-theory-coach/index.php', route_base());
     }
 }

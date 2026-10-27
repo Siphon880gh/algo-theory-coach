@@ -5,7 +5,7 @@ declare(strict_types=1);
 if (PHP_VERSION_ID < 70400) {
     http_response_code(500);
     header('Content-Type: text/plain; charset=UTF-8');
-    echo "Dev Theory Coach needs PHP 7.4 or newer.\n";
+    echo "Algo Theory Coach needs PHP 7.4 or newer.\n";
     echo 'This request is using PHP ' . PHP_VERSION . ".\n\n";
     echo "MAMP: Preferences → PHP → 7.4.33 or newer, then restart Apache.\n";
     exit(1);

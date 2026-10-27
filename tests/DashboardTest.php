@@ -18,7 +18,7 @@ final class DashboardTest extends TestCase
         $this->assertStringContainsString('route=%2Fguides%2Farrays', $html);
         $this->assertStringContainsString('arrays', $html);
         $this->assertStringContainsString('Case gate locked', $html);
-        $this->assertStringContainsString('Dev Theory Coach', $html);
+        $this->assertStringContainsString('Algo Theory Coach', $html);
         $this->assertStringNotContainsString('THEORY_CORE', $html);
         $this->assertStringContainsString('site-header', $html);
         $this->assertStringContainsString('site-nav', $html);

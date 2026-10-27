@@ -1,7 +1,7 @@
 ---
 name: add-guide
 description: >-
-  Add one Dev Theory Coach guide for a `slug`. Use when authoring or extending `/guides`.
+  Add one Algo Theory Coach guide for a `slug`. Use when authoring or extending `/guides`.
 ---
 
 # Add a guide

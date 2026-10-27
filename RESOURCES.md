@@ -4,7 +4,7 @@ A **resource** is a teaching unit the learner can open. Guides, step-by-step coa
 
 **Not resources:** learning paths, the dashboard, and nav. Those find or sequence resources.
 
-All data is **educational practice content** (not live systems). This app is not a coding-problem bank, not a code runner, and not a substitute for a live system-design interview. `../leetcode-coach` owns problem practice. Never stamp SAMPLE on UI chrome, and never put SAMPLE / "SAMPLE example" / "SAMPLE lesson" / "Recall checkpoint" in learner-facing prose.
+All data is **educational practice content** (not live systems). This app is not a coding-problem bank, not a code runner, and not a substitute for a live system-design interview. `../algo-leetcode-coach` owns problem practice. Never stamp SAMPLE on UI chrome, and never put SAMPLE / "SAMPLE example" / "SAMPLE lesson" / "Recall checkpoint" in learner-facing prose.
 
 Teachable unit is `slug` (what you are learning). **Track** is which learner conversation the unit belongs to. Cognitive ability is the **resource type** (how you practice). The same `slug` should echo across types — see [`LOOPS/LOOP-Graph.md`](./LOOPS/LOOP-Graph.md).
 

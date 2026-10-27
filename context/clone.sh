@@ -24,7 +24,7 @@ clone_repo() {
 }
 
 # Local siblings (do not clone; they already sit next to this app):
-#   ../leetcode-coach   PHP guides, coach trees, mini games — problem practice, not this syllabus
+#   ../algo-leetcode-coach   PHP guides, coach trees, mini games — problem practice, not this syllabus
 #   ../mental-math      PHP guides hub, drills, coach rewind — runtime patterns
 #   ../stocks-trainer   React cases and path UI — case-player patterns only
 

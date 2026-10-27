@@ -1,6 +1,6 @@
 {
-  "name": "weng/dev-theory-coach",
-  "description": "Dev Theory Coach (THEORY_CORE) \u2014 PHP server-rendered interview concept trainer",
+  "name": "weng/algo-theory-coach",
+  "description": "Algo Theory Coach (THEORY_CORE) \u2014 PHP server-rendered interview concept trainer",
   "type": "project",
   "require": {
     "php": "^7.4 || ^8.0"

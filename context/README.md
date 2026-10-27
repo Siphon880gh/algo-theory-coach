@@ -1,4 +1,4 @@
-# Context — reference material for Dev Theory Coach
+# Context — reference material for Algo Theory Coach
 
 Local reference material for the agent when authoring guides, coaching trees, quizzes, drills, cases, and cheatsheets for **developer interview concepts: data structures, algorithms, system design, and design patterns**. It is not served by the app.
 
@@ -19,7 +19,7 @@ The script shallow-clones (`--depth 1`) into `context/repos/`. If a folder is al
 | Folder / file | Upstream | License | Use for |
 |---------------|----------|---------|---------|
 | `curriculums/` | written for this app | original | Syllabus of record: slugs, order, outcomes, practice seeds. Wins over every clone. |
-| `notes/syllabus-wins.md` | written for this app | original | How to treat clones vs curricula; boundary with leetcode-coach. |
+| `notes/syllabus-wins.md` | written for this app | original | How to treat clones vs curricula; boundary with algo-leetcode-coach. |
 | `notes/work-queues-slug.md` | written for this app | original | Why the design lesson is `work-queues` and the structure lesson is `queues`. |
 | `repos/javascript-algorithms` | [trekhleb/javascript-algorithms](https://github.com/trekhleb/javascript-algorithms) | MIT | Track A and B worked-example seeds. Rewrite. |
 | `repos/tech-interview-handbook` | [yangshun/tech-interview-handbook](https://github.com/yangshun/tech-interview-handbook) | MIT | Quiz-distractor seeds and "which approach" seeds for tracks A–C. Rewrite. |
@@ -34,7 +34,7 @@ Local siblings, not cloned:
 
 | Path | Use for |
 |------|---------|
-| `../leetcode-coach` | PHP guide and coach-tree runtime patterns. That app owns problem practice. Do not import its content. |
+| `../algo-leetcode-coach` | PHP guide and coach-tree runtime patterns. That app owns problem practice. Do not import its content. |
 | `../mental-math` | PHP guides hub, drill shell, coach rewind, progress key. Gauntlet bar for those surfaces. |
 | `../stocks-trainer` | Case player and path UI patterns if a PHP case page needs a structural comparison. |
 

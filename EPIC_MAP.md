@@ -1,4 +1,4 @@
-# Dev Theory Coach (THEORY_CORE) — Epic Map
+# Algo Theory Coach (THEORY_CORE) — Epic Map
 
 Living product map for AI-assisted incremental delivery.  
 Companions: [`IMPLEMENTATION_STORIES.md`](./IMPLEMENTATION_STORIES.md) · [`.agents/state.json`](./.agents/state.json) · [`RESOURCES.md`](./RESOURCES.md) · [`context/README.md`](./context/README.md) · [`gauntlet/contract.md`](./gauntlet/contract.md)
@@ -17,17 +17,17 @@ Companions: [`IMPLEMENTATION_STORIES.md`](./IMPLEMENTATION_STORIES.md) · [`.age
 
 | Field | Value |
 |-------|-------|
-| **App name** | Dev Theory Coach (THEORY_CORE) |
+| **App name** | Algo Theory Coach (THEORY_CORE) |
 | **One-liner** | Teach interview concepts with guides, step-by-step choices, and quizzes so a candidate can name the right idea and reject the wrong one. |
 | **Success signal** | Learner finishes the Beginner path with persisted progress: all 12 phone-screen guides read, the `arrays` quiz at ≥ 0.8, and the `arrays` coach success node reached. |
 
-This app covers the four curricula in `context/curriculums/`. It does not run code and it does not replace `../leetcode-coach`, which owns problem practice and mini games.
+This app covers the four curricula in `context/curriculums/`. It does not run code and it does not replace `../algo-leetcode-coach`, which owns problem practice and mini games.
 
 ### Product decision
 
 The curricula already name the learner, the slugs, the order, and the outcome of each lesson, so the plan did not stop for a reverse interview. Three shapes were graded against that outcome:
 
-1. A second problem-solving trainer. Rejected. It duplicates leetcode-coach.
+1. A second problem-solving trainer. Rejected. It duplicates algo-leetcode-coach.
 2. A system-design simulator. Rejected. Tracks A, B, and D would be thin, and a general simulator is a large engine for a job drills and cases already do.
 3. Guides and coach trees on every lesson, quizzes as the practice the learner asked for, drills only where the answer is closed-form, and cases where the lesson is a decision. Chosen.
 

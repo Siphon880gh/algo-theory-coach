@@ -21,7 +21,7 @@ final class IndexEntryTest extends TestCase
         $this->assertStringContainsString('declare(strict_types=1)', $raw);
         $this->assertStringContainsString('Dashboard::homeHtml()', $raw);
         $html = Dashboard::homeHtml(ProgressSchema::fresh());
-        $this->assertStringContainsString('Dev Theory Coach', $html);
+        $this->assertStringContainsString('Algo Theory Coach', $html);
         $this->assertStringNotContainsString('THEORY_CORE', $html);
         $this->assertStringContainsString('site-header', $html);
     }

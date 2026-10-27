@@ -47,7 +47,7 @@
     "E11.M1.S2": "done"
   },
   "app": {
-    "name": "Dev Theory Coach (THEORY_CORE)",
+    "name": "Algo Theory Coach (THEORY_CORE)",
     "one_liner": "Teach interview concepts with guides, step-by-step choices, and quizzes so a candidate can name the right idea and reject the wrong one.",
     "platform": "web",
     "topic": "developer interview concepts: data structures, algorithms, system design, and design patterns"
@@ -83,7 +83,7 @@
       "simulation": "Estimates and rate limits are closed-form drills and cases. A general systems simulator is out of scope."
     },
     "slug_collision": "data-structures queues stays queues; system-design job queue is work-queues. See context/notes/work-queues-slug.md.",
-    "sibling_boundary": "leetcode-coach owns problem statements and mini games. This app owns concepts across the four curricula.",
+    "sibling_boundary": "algo-leetcode-coach owns problem statements and mini games. This app owns concepts across the four curricula.",
     "forge": {
       "method": "Method 1 (context, outcome, grade alternatives). Reverse interview skipped: the four curricula already fix persona, slugs, order, and outcomes.",
       "chosen": "Guide + coach + quiz on every family; drills on seven closed-form families; cases on tracks C and D; cheatsheets last.",
@@ -95,7 +95,7 @@
     },
     "gauntlet": {
       "contract": "gauntlet/contract.md",
-      "bar": "Local siblings ../mental-math (guides hub, coach rewind, progress reset) and ../leetcode-coach (guide to coach on the same slug, missing tree is a slot).",
+      "bar": "Local siblings ../mental-math (guides hub, coach rewind, progress reset) and ../algo-leetcode-coach (guide to coach on the same slug, missing tree is a slot).",
       "critic_rounds_per_milestone": 3,
       "when": "After the last story of a milestone passes phpunit, before that milestone is marked done. Integration critic after E7.M1 and after E11.M1."
     },
