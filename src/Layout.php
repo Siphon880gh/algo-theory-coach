@@ -103,7 +103,7 @@ JS;
         $parts[] = '</div>';
         $parts[] = '</div>';
         $parts[] = '<script src="' . e(asset_url('js/theme.js')) . '"></script>';
-        $parts[] = '<script src="' . e(asset_url('js/harness-ai.js')) . '" defer data-app-id="trainer/algo-theory-coach" data-role="primary" data-input="guides, quizzes, drills, cases and cheatsheets for each topic in `content/`" data-folder="' . e(basename(dirname(__DIR__))) . '" data-app="Algo Theory Coach" data-accent="#2f6fa7" data-ask="' . e('Ask it to add a guide, quiz, drill, case, cheatsheet, or coaching session for a topic with the matching `add-*` skill in `.agents/skills/`. Content lives in `content/`; reload to see it.') . '"></script>';
+        $parts[] = '<script src="' . e(asset_url('js/harness-ai.js')) . '" defer data-app-id="trainer/algo-theory-coach" data-role="complete" data-input="guides, quizzes, drills, cases and cheatsheets for each topic in `content/`" data-folder="' . e(basename(dirname(__DIR__))) . '" data-app="Algo Theory Coach" data-accent="#2f6fa7" data-ask="' . e('Ask it to add a guide, quiz, drill, case, cheatsheet, or coaching session for a topic with the matching `add-*` skill in `.agents/skills/`. Content lives in `content/`; reload to see it.') . '"></script>';
         foreach ($scripts as $src) {
             $parts[] = '<script src="' . e((string) $src) . '"></script>';
         }
