@@ -13,11 +13,12 @@
  *   review:      { questionId: { unitId, dueOn, step, wrongAt } }
  *   reminder:    { enabled, permission, time: 'HH:MM', lastNotifiedOn }
  *   doneForToday: 'YYYY-MM-DD' | null
+ *   popover:     { onLoad: true, lastShownOn: 'YYYY-MM-DD' | null }   (welcome popover once per local day)
  */
 (function (global) {
   'use strict';
 
-  var CORE_VERSION = 1;
+  var CORE_VERSION = 2;
   var REVIEW_STEPS = [1, 3, 7];
   var FREEZE_EVERY = 7;
   var MAX_FREEZES = 1;
@@ -85,7 +86,8 @@
       badges: { earned: {}, xp: 0, level: 1 },
       review: {},
       reminder: { enabled: false, permission: 'default', time: opts.reminderTime || '09:00', lastNotifiedOn: null },
-      doneForToday: null
+      doneForToday: null,
+      popover: { onLoad: true, lastShownOn: null }
     };
   }
 
@@ -140,6 +142,10 @@
       if (typeof r.reminder.lastNotifiedOn === 'string') out.reminder.lastNotifiedOn = r.reminder.lastNotifiedOn;
     }
     if (typeof r.doneForToday === 'string') out.doneForToday = r.doneForToday;
+    if (isObj(r.popover)) {
+      out.popover.onLoad = r.popover.onLoad !== false;
+      if (typeof r.popover.lastShownOn === 'string') out.popover.lastShownOn = r.popover.lastShownOn;
+    }
     return out;
   }
 
@@ -498,6 +504,90 @@
     return at.getTime() - now.getTime();
   }
 
+  // ---------------------------------------------------------------- welcome popover, corner, activity (pure)
+  /** True when the welcome popover should show on this load: enabled and not yet shown this local day. */
+  function popoverDue(r, now) {
+    var p = r.popover || {};
+    if (p.onLoad === false) return false;
+    return p.lastShownOn !== today(now);
+  }
+  function markPopoverShown(r, now) {
+    if (!isObj(r.popover)) r.popover = { onLoad: true, lastShownOn: null };
+    r.popover.lastShownOn = today(now);
+    return r;
+  }
+  function setPopoverOnLoad(r, on) {
+    if (!isObj(r.popover)) r.popover = { onLoad: true, lastShownOn: null };
+    r.popover.onLoad = !!on;
+    return r;
+  }
+
+  /** Last `n` local days (oldest first): { day, state: 'active'|'frozen'|'missed'|'today', count }. */
+  function activity(r, now, n) {
+    n = n || 30;
+    var t = today(now);
+    var s = streak(r, now);
+    var counts = {};
+    r.history.forEach(function (h) { var d = localDay(h.at); if (d) counts[d] = (counts[d] || 0) + 1; });
+    var frozen = {};
+    s.frozenDays.forEach(function (d) { frozen[d] = true; });
+    var out = [];
+    for (var i = n - 1; i >= 0; i--) {
+      var d = addDays(t, -i);
+      var c = counts[d] || 0;
+      var state = c > 0 ? 'active' : frozen[d] ? 'frozen' : d === t ? 'today' : 'missed';
+      out.push({ day: d, state: state, count: c });
+    }
+    return out;
+  }
+
+  /** The next milestone to show: an unearned badge, else the next streak length. */
+  var STREAK_STEPS = [3, 7, 14, 30, 60, 100, 200, 365];
+  function nextMilestone(r, now, opts) {
+    opts = opts || {};
+    if (opts.badges !== false) {
+      for (var i = 0; i < BADGES.length; i++) if (!r.badges.earned[BADGES[i].id]) return BADGES[i].name;
+    }
+    var cur = streak(r, now).current;
+    for (var j = 0; j < STREAK_STEPS.length; j++) if (STREAK_STEPS[j] > cur) return STREAK_STEPS[j] + '-day streak (' + (STREAK_STEPS[j] - cur) + ' to go)';
+    return null;
+  }
+
+  function overlaps(a, b) { return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top; }
+  /**
+   * Choose a free bottom corner for a fixed stack of size {w, h}.
+   * occupied: [{ left, top, right, bottom }] rects of existing fixed/sticky UI (viewport coordinates).
+   * opts: { vw, vh, margin (16), gap (8), order: ['bottom-right', 'bottom-left'] }
+   * Returns { corner, lift, rect }: the first corner with no overlap; otherwise the corner needing the
+   * smallest lift (px moved up so the stack clears what is under it), preferring the order on ties.
+   */
+  function pickCorner(occupied, size, opts) {
+    opts = opts || {};
+    var vw = opts.vw, vh = opts.vh, m = opts.margin == null ? 16 : opts.margin, gap = opts.gap == null ? 8 : opts.gap;
+    var order = opts.order || ['bottom-right', 'bottom-left'];
+    var best = null;
+    for (var i = 0; i < order.length; i++) {
+      var corner = order[i];
+      var left = corner === 'bottom-left' ? m : vw - m - size.w;
+      var lift = 0, rect, guard = 0, hit;
+      do {
+        rect = { left: left, right: left + size.w, bottom: vh - m - lift, top: vh - m - lift - size.h };
+        hit = null;
+        for (var k = 0; k < (occupied || []).length; k++) {
+          var o = occupied[k];
+          if (o && o.right > o.left && o.bottom > o.top && overlaps(rect, o)) { hit = o; break; }
+        }
+        if (hit) lift = Math.max(lift + 1, vh - m - hit.top + gap);
+        guard++;
+      } while (hit && rect.top > 0 && guard < 20);
+      var res = { corner: corner, lift: hit ? Infinity : lift, rect: rect };
+      if (res.lift === 0) return res;
+      if (!best || res.lift < best.lift) best = res;
+    }
+    if (best && best.lift === Infinity) best.lift = 0;
+    return best;
+  }
+
   // ---------------------------------------------------------------- DOM helpers
   var doc = global.document;
   function el(tag, attrs, kids) {
@@ -627,9 +717,10 @@
     var c = todayCounts(r, now), s = streak(r, now), b = behind(r, now), met = goalMet(r, now);
     container.innerHTML = '';
     container.classList.add('rt-panel');
-    container.setAttribute('aria-labelledby', 'rt-home-h');
+    var idp = cfg.idp || 'rt-';
+    container.setAttribute('aria-labelledby', idp + 'home-h');
     var live = el('div', { 'aria-live': 'polite' });
-    container.appendChild(el('h2', { id: 'rt-home-h', text: 'Your pace' }));
+    container.appendChild(el('h2', { id: idp + 'home-h', text: 'Your pace' }));
     container.appendChild(live);
 
     var paceText = c.lessons + ' of ' + r.pace.lessonsPerDay + ' ' + (r.pace.lessonsPerDay === 1 ? lesson : lessons) + ' today';
@@ -719,15 +810,16 @@
   function settingsBlock(cfg, rerender) {
     var r = cfg.get();
     var L = cfg.labels || {};
+    var idp = cfg.idp || 'rt-';
     var d = el('details', { class: 'rt-settings' });
     if (cfg.settingsOpen) d.open = true;
     d.appendChild(el('summary', { text: 'Pace and reminders' }));
-    var lp = el('input', { type: 'number', min: '0', max: '50', step: '1', value: String(r.pace.lessonsPerDay), id: 'rt-lpd' });
-    var row = el('div', { class: 'rt-row' }, [el('label', { for: 'rt-lpd' }, [(L.lessons ? L.lessons.charAt(0).toUpperCase() + L.lessons.slice(1) : 'Lessons') + ' per day', lp])]);
+    var lp = el('input', { type: 'number', min: '0', max: '50', step: '1', value: String(r.pace.lessonsPerDay), id: idp + 'lpd' });
+    var row = el('div', { class: 'rt-row' }, [el('label', { for: idp + 'lpd' }, [(L.lessons ? L.lessons.charAt(0).toUpperCase() + L.lessons.slice(1) : 'Lessons') + ' per day', lp])]);
     var qp = null;
     if (cfg.quizGoal !== false) {
-      qp = el('input', { type: 'number', min: '0', max: '50', step: '1', value: String(r.pace.quizzesPerDay), id: 'rt-qpd' });
-      row.appendChild(el('label', { for: 'rt-qpd' }, [(L.quizzes ? L.quizzes.charAt(0).toUpperCase() + L.quizzes.slice(1) : 'Quizzes') + ' per day', qp]));
+      qp = el('input', { type: 'number', min: '0', max: '50', step: '1', value: String(r.pace.quizzesPerDay), id: idp + 'qpd' });
+      row.appendChild(el('label', { for: idp + 'qpd' }, [(L.quizzes ? L.quizzes.charAt(0).toUpperCase() + L.quizzes.slice(1) : 'Quizzes') + ' per day', qp]));
     }
     var save = el('button', { type: 'button', class: 'rt-btn', text: 'Save pace' });
     save.addEventListener('click', function () {
@@ -741,8 +833,8 @@
     d.appendChild(row);
     d.appendChild(el('p', { class: 'rt-muted', text: 'Freezes: every 7 active days in a row earns one freeze (you can bank one). It covers a single missed day automatically.' }));
 
-    var time = el('input', { type: 'time', value: r.reminder.time, id: 'rt-time' });
-    var rrow = el('div', { class: 'rt-row' }, [el('label', { for: 'rt-time' }, ['Daily reminder at', time])]);
+    var time = el('input', { type: 'time', value: r.reminder.time, id: idp + 'time' });
+    var rrow = el('div', { class: 'rt-row' }, [el('label', { for: idp + 'time' }, ['Daily reminder at', time])]);
     if (!r.reminder.enabled) {
       var en = el('button', { type: 'button', class: 'rt-btn', 'data-rt-enable-reminders': '1', text: 'Enable reminders' });
       en.addEventListener('click', function () {
@@ -783,7 +875,7 @@
       status.appendChild(el('span', { class: 'rt-done', text: 'Completed' }));
       status.appendChild(agoBadge(c.completedAt));
       var again = el('button', { type: 'button', class: 'rt-btn', 'data-rt-mark-again': '1', text: 'Mark complete again' });
-      again.addEventListener('click', function () { var x = cfg.get(); var res = complete(x, cfg.unit, { source: 'button' }); cfg.save(x); if (cfg.onComplete) cfg.onComplete(res); renderMarkComplete(container, cfg); });
+      again.addEventListener('click', function () { var x = cfg.get(); var res = complete(x, cfg.unit, { source: 'button' }); cfg.save(x); if (cfg.onComplete) cfg.onComplete(res); renderMarkComplete(container, cfg); if (chrome) chrome.refresh(); });
       container.appendChild(status);
       container.appendChild(el('p', { class: 'rt-muted', text: 'Reviewing it again counts toward today\u2019s pace.' }));
       container.appendChild(again);
@@ -796,6 +888,7 @@
       cfg.save(x);
       if (cfg.onComplete) cfg.onComplete(res);
       renderMarkComplete(container, cfg);
+      if (chrome) chrome.refresh();
     });
     container.appendChild(btn);
     container.appendChild(status);
@@ -838,6 +931,304 @@
     draw();
   }
 
+  // ---------------------------------------------------------------- corner buttons, progress panel, welcome popover
+  var CHROME_CSS = [
+    '.rt-corner{position:fixed;z-index:9990;display:flex;flex-direction:column;gap:8px;align-items:stretch;bottom:max(16px,env(safe-area-inset-bottom))}',
+    '.rt-corner--bottom-right{right:max(16px,env(safe-area-inset-right))}',
+    '.rt-corner--bottom-left{left:max(16px,env(safe-area-inset-left))}',
+    '.rt-corner-btn{font:inherit;font-size:14px;min-width:44px;min-height:44px;padding:.4rem .75rem;border:1px solid var(--rt-edge,#888);border-radius:var(--rt-radius,999px);background:var(--rt-corner-bg,#fff);color:var(--rt-corner-fg,#1c222b);box-shadow:0 1px 6px rgba(0,0,0,.18);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.35rem;text-decoration:none;line-height:1.2}',
+    '.rt-corner-btn:focus-visible,.rt-pop button:focus-visible,.rt-pop a:focus-visible{outline:3px solid var(--rt-accent,#2f6fa7);outline-offset:2px}',
+    '.rt-sheet{position:fixed;z-index:9991;width:min(380px,calc(100vw - 32px));max-height:calc(100vh - 150px);overflow:auto;background:var(--rt-corner-bg,#fff);color:var(--rt-corner-fg,#1c222b);border:1px solid var(--rt-edge,#888);border-radius:var(--rt-radius,8px);box-shadow:0 4px 18px rgba(0,0,0,.22);padding:.25rem .9rem .9rem}',
+    '.rt-sheet .rt-panel{border:0;margin:0;padding:.4rem 0}',
+    '.rt-sheet-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}',
+    '.rt-x{font:inherit;min-width:44px;min-height:44px;border:0;background:transparent;color:inherit;cursor:pointer;font-size:1.3rem}',
+    '.rt-strip{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin:.4rem 0;max-width:280px}',
+    '.rt-cell{display:block;aspect-ratio:1;min-width:14px;border-radius:3px;border:1px solid var(--rt-edge,#999);box-sizing:border-box}',
+    '.rt-cell--active{background:var(--rt-accent,#2f6fa7);border-color:var(--rt-accent,#2f6fa7)}',
+    '.rt-cell--frozen{background:repeating-linear-gradient(45deg,transparent 0 3px,var(--rt-edge,#999) 3px 4px)}',
+    '.rt-cell--missed{background:transparent;opacity:.55}',
+    '.rt-cell--today{border-style:dashed;border-width:2px}',
+    '.rt-legend{display:flex;flex-wrap:wrap;gap:.7rem;font-size:.8em;opacity:.85;margin:.2rem 0 .6rem}',
+    '.rt-legend span{display:inline-flex;align-items:center;gap:.3rem}',
+    '.rt-legend .rt-cell{width:12px;min-width:12px;height:12px}',
+    '.rt-backdrop{position:fixed;inset:0;z-index:9995;background:rgba(10,14,20,.45);display:flex;align-items:center;justify-content:center;padding:16px}',
+    '.rt-pop{position:relative;width:min(440px,100%);max-height:calc(100vh - 32px);overflow:auto;background:var(--rt-corner-bg,#fff);color:var(--rt-corner-fg,#1c222b);border:1px solid var(--rt-edge,#888);border-radius:var(--rt-radius,10px);box-shadow:0 8px 30px rgba(0,0,0,.3);padding:1rem 1.1rem}',
+    '.rt-pop h2{margin:.1rem 2.5rem .6rem 0;font-size:1.15rem}',
+    '.rt-pop p{margin:.35rem 0}',
+    '.rt-pop .rt-x{position:absolute;top:.25rem;right:.25rem}',
+    '.rt-pop label{display:inline-flex;gap:.4rem;align-items:center;min-height:44px}',
+    '@media (prefers-reduced-motion:no-preference){.rt-pop{animation:rt-in .16s ease-out}.rt-sheet{animation:rt-in .12s ease-out}@keyframes rt-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}'
+  ].join('\n');
+  function injectChromeStyles() {
+    injectStyles();
+    if (!doc || doc.getElementById('rt-chrome-style')) return;
+    var s = el('style', { id: 'rt-chrome-style' });
+    s.textContent = CHROME_CSS;
+    (doc.head || doc.documentElement).appendChild(s);
+  }
+
+  /** 30-day activity strip with a legend and per-day text (no red, no guilt copy). */
+  function renderStrip(r, now) {
+    var days = activity(r, now, 30);
+    var wrap = el('div', { 'data-rt-strip': '1' });
+    wrap.appendChild(el('h3', { text: 'Last 30 days' }));
+    var grid = el('ul', { class: 'rt-strip', role: 'list', 'aria-label': 'Activity over the last 30 days', style: 'list-style:none;padding:0' });
+    days.forEach(function (d) {
+      var when = fullDate(d.day + 'T12:00:00');
+      var txt = d.state === 'active' ? when + ': ' + d.count + ' completed' : d.state === 'frozen' ? when + ': freeze used' : d.state === 'today' ? when + ' (today): nothing yet' : when + ': no activity';
+      grid.appendChild(el('li', { class: 'rt-cell rt-cell--' + d.state, 'data-rt-day': d.day, 'data-rt-state': d.state, title: txt, 'aria-label': txt }));
+    });
+    wrap.appendChild(grid);
+    var lg = el('p', { class: 'rt-legend' });
+    [['active', 'Active'], ['frozen', 'Freeze'], ['missed', 'Rest day'], ['today', 'Today']].forEach(function (x) {
+      lg.appendChild(el('span', {}, [el('i', { class: 'rt-cell rt-cell--' + x[0], 'aria-hidden': 'true' }), x[1]]));
+    });
+    wrap.appendChild(lg);
+    var act = days.filter(function (d) { return d.state === 'active'; }).length;
+    wrap.appendChild(el('p', { class: 'rt-muted', text: act + ' active ' + (act === 1 ? 'day' : 'days') + ' in the last 30.' }));
+    return wrap;
+  }
+
+  function isVisibleFixed(n, skip) {
+    if (!n || n.nodeType !== 1 || (skip && skip(n))) return false;
+    var cs = global.getComputedStyle(n);
+    if (cs.position !== 'fixed' && cs.position !== 'sticky') return false;
+    if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
+    return true;
+  }
+  /** Rects of visible fixed/sticky elements that sit in the bottom part of the viewport. */
+  function occupiedRects(skip, extra) {
+    var out = [];
+    if (!doc || !doc.body || !global.getComputedStyle) return out;
+    var vh = global.innerHeight;
+    var all = doc.body.getElementsByTagName('*');
+    for (var i = 0; i < all.length; i++) {
+      var n = all[i];
+      if (!isVisibleFixed(n, skip)) continue;
+      var b = n.getBoundingClientRect();
+      if (b.width < 2 || b.height < 2 || b.bottom < vh * 0.5) continue;
+      if (b.width >= global.innerWidth * 0.98 && b.height >= vh * 0.9) continue; // full-screen layers
+      out.push({ left: b.left, top: b.top, right: b.right, bottom: b.bottom });
+    }
+    if (extra) Array.prototype.forEach.call(doc.querySelectorAll(extra), function (n) {
+      var b = n.getBoundingClientRect(); if (b.width && b.height) out.push({ left: b.left, top: b.top, right: b.right, bottom: b.bottom });
+    });
+    return out;
+  }
+
+  function focusables(root) {
+    return Array.prototype.filter.call(root.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])'), function (n) { return n.offsetParent !== null || n === doc.activeElement; });
+  }
+
+  /** Short summary used by the popover. */
+  function summary(cfg, now) {
+    var r = cfg.get();
+    var L = cfg.labels || {};
+    var lesson = L.lesson || 'lesson', lessons = L.lessons || 'lessons', quiz = L.quiz || 'quiz', quizzes = L.quizzes || 'quizzes';
+    var c = todayCounts(r, now), s = streak(r, now);
+    var pace = c.lessons + ' of ' + r.pace.lessonsPerDay + ' ' + (r.pace.lessonsPerDay === 1 ? lesson : lessons) + ' today';
+    if (cfg.quizGoal !== false && r.pace.quizzesPerDay > 0) pace += ' \u00b7 ' + c.quizzes + ' of ' + r.pace.quizzesPerDay + ' ' + (r.pace.quizzesPerDay === 1 ? quiz : quizzes);
+    var st = 'Streak: ' + s.current + (s.current === 1 ? ' day' : ' days') + ' \u00b7 ' + (s.freezes > 0 ? '1 freeze banked' : 'no freeze banked');
+    var ms = cfg.nextMilestone || nextMilestone(r, now, { badges: !!cfg.badges });
+    var fc = null, m = (cfg.modules || [])[0];
+    if (m) {
+      var f = forecast(r, m.remaining, now);
+      fc = f.done ? m.title + ': finished.' : f.date ? 'At your current pace, you\u2019ll finish ' + m.title + ' by ' + fullDate(f.date + 'T12:00:00') + '.' : m.title + ': ' + m.remaining + ' left. Set a pace to see a finish date.';
+    }
+    return { pace: pace, streak: st, milestone: ms, forecast: fc, met: goalMet(r, now), current: s.current };
+  }
+
+  var chrome = null;
+  /**
+   * Mount the fixed corner buttons (progress / streak + diary), the progress panel and the welcome popover.
+   * cfg: the renderHome cfg (get, save, labels, continueHref, continueTitle, modules, dueReviews, reviewHref,
+   *      diaryHref, badges, milestoneList, quizGoal, onChange, onReminder) plus:
+   *      title (popover heading), avoid (CSS selector of extra UI to keep clear of),
+   *      order (corner preference), popover (default true), corner (force a corner)
+   * cfg may be a function returning that object (re-read on every open).
+   */
+  function mountChrome(cfgIn) {
+    if (!doc || !doc.body) return null;
+    var getCfg = typeof cfgIn === 'function' ? cfgIn : function () { return cfgIn; };
+    var cfg = getCfg();
+    injectChromeStyles();
+    if (chrome) chrome.destroy();
+    var stack = el('div', { class: 'rt-corner', 'data-rt-corner': '1', role: 'group', 'aria-label': 'Learning progress' });
+    var prog = el('button', { type: 'button', class: 'rt-corner-btn', 'data-rt-progress-btn': '1', 'aria-expanded': 'false', 'aria-controls': 'rt-sheet', 'aria-haspopup': 'dialog' });
+    stack.appendChild(prog);
+    var diaryBtn = null;
+    if (cfg.diaryHref) { diaryBtn = el('a', { class: 'rt-corner-btn', href: cfg.diaryHref, 'data-rt-diary-btn': '1', 'aria-label': 'Open diary', text: 'Diary' }); stack.appendChild(diaryBtn); }
+    doc.body.appendChild(stack);
+    var spacer = el('div', { 'data-rt-corner-spacer': '1', 'aria-hidden': 'true', style: 'height:120px' });
+    doc.body.appendChild(spacer);
+    var sheet = null, lastFocus = null, dodge = 0, corner = cfg.corner || 'bottom-right', lift = 0;
+
+    function label() {
+      var s = streak(getCfg().get());
+      prog.textContent = '';
+      prog.appendChild(el('span', { 'aria-hidden': 'true', text: 'Streak ' + s.current }));
+      prog.setAttribute('aria-label', 'Progress: ' + s.current + '-day streak. Open pace, streak and milestones');
+      prog.setAttribute('data-rt-streak', String(s.current));
+    }
+    function place() {
+      var skip = function (n) { return stack.contains(n) || (sheet && sheet.contains(n)) || n.classList.contains('rt-banner') || n.classList.contains('rt-backdrop'); };
+      var b = stack.getBoundingClientRect();
+      var res = cfg.corner ? { corner: cfg.corner, lift: 0 } : pickCorner(occupiedRects(skip, cfg.avoid), { w: Math.max(b.width, 60), h: Math.max(b.height, 44) }, { vw: global.innerWidth, vh: global.innerHeight, order: cfg.order });
+      corner = res.corner; lift = res.lift || 0;
+      stack.className = 'rt-corner rt-corner--' + corner;
+      stack.setAttribute('data-rt-corner', corner);
+      apply();
+      spacer.style.height = Math.round(b.height + lift + 32) + 'px';
+      if (sheet) placeSheet();
+    }
+    function apply() {
+      var off = lift + dodge;
+      stack.style.bottom = off ? 'calc(max(16px, env(safe-area-inset-bottom)) + ' + Math.round(off) + 'px)' : '';
+    }
+    function placeSheet() {
+      var b = stack.getBoundingClientRect();
+      sheet.style.bottom = Math.round(global.innerHeight - b.top + 8) + 'px';
+      sheet.style.left = corner === 'bottom-left' ? 'max(16px, env(safe-area-inset-left))' : '';
+      sheet.style.right = corner === 'bottom-right' ? 'max(16px, env(safe-area-inset-right))' : '';
+    }
+    // keep clear of any Complete control that scrolls under the stack
+    var ticking = false;
+    function dodgeComplete() {
+      ticking = false;
+      var prev = dodge; dodge = 0; apply();
+      var b = stack.getBoundingClientRect();
+      var need = 0;
+      Array.prototype.forEach.call(doc.querySelectorAll('[data-rt-mark-complete],[data-rt-mark-again],[data-rt-complete-control]'), function (n) {
+        var r = n.getBoundingClientRect();
+        if (r.width && overlaps({ left: b.left, right: b.right, top: b.top, bottom: b.bottom }, r)) need = Math.max(need, b.bottom - r.top + 8);
+      });
+      dodge = need;
+      if (dodge !== prev || dodge) apply();
+    }
+    function onScroll() { if (!ticking) { ticking = true; (global.requestAnimationFrame || setTimeout)(dodgeComplete); } }
+
+    function closeSheet(restore) {
+      if (!sheet) return;
+      sheet.remove(); sheet = null;
+      prog.setAttribute('aria-expanded', 'false');
+      if (restore !== false) prog.focus();
+    }
+    function openSheet() {
+      var c = getCfg();
+      sheet = el('div', { id: 'rt-sheet', class: 'rt-sheet', role: 'dialog', 'aria-modal': 'false', 'aria-labelledby': 'rt-sheet-h', 'data-rt-sheet': '1' });
+      var x = el('button', { type: 'button', class: 'rt-x', 'aria-label': 'Close progress', text: '\u00d7' });
+      x.addEventListener('click', function () { closeSheet(); });
+      sheet.appendChild(el('div', { class: 'rt-sheet-head' }, [el('h2', { id: 'rt-sheet-h', style: 'font-size:1.05rem;margin:.6rem 0 .2rem', text: 'Your progress' }), x]));
+      var body = el('div');
+      sheet.appendChild(body);
+      function draw() {
+        body.innerHTML = '';
+        var home = el('div');
+        var hc = {}; Object.keys(c).forEach(function (k) { hc[k] = c[k]; });
+        hc.idp = 'rt-s-';
+        hc.onChange = function () { if (c.onChange) c.onChange(); label(); };
+        renderHome(home, hc);
+        var h = home.querySelector('h2'); if (h) h.textContent = 'Pace';
+        body.appendChild(home);
+        var weekly = home.querySelector('[data-rt-weekly]');
+        home.insertBefore(renderStrip(c.get()), weekly || null);
+        var r = c.get();
+        var on = el('input', { type: 'checkbox', id: 'rt-s-onload', 'data-rt-onload-toggle': '1' });
+        on.checked = !(r.popover && r.popover.onLoad === false);
+        on.addEventListener('change', function () { var y = c.get(); setPopoverOnLoad(y, on.checked); c.save(y); });
+        body.appendChild(el('p', {}, [el('label', { for: 'rt-s-onload', style: 'display:inline-flex;gap:.4rem;align-items:center;min-height:44px' }, [on, 'Show the welcome summary when the app opens'])]));
+      }
+      draw();
+      doc.body.appendChild(sheet);
+      placeSheet();
+      prog.setAttribute('aria-expanded', 'true');
+      var f = focusables(sheet); (f[1] || f[0] || sheet).focus();
+    }
+    prog.addEventListener('click', function () { if (sheet) closeSheet(); else openSheet(); });
+    function onKey(e) {
+      if (e.key !== 'Escape' && e.key !== 'Esc') return;
+      if (doc.querySelector('.rt-backdrop')) return; // popover handles its own Esc
+      if (sheet) { e.preventDefault(); closeSheet(); }
+    }
+    function onDown(e) { if (sheet && !sheet.contains(e.target) && !stack.contains(e.target)) closeSheet(false); }
+    var resizeT = null;
+    function onResize() { clearTimeout(resizeT); resizeT = setTimeout(place, 150); }
+    doc.addEventListener('keydown', onKey);
+    doc.addEventListener('mousedown', onDown);
+    doc.addEventListener('touchstart', onDown, { passive: true });
+    global.addEventListener('resize', onResize);
+    global.addEventListener('scroll', onScroll, { passive: true });
+    label(); place();
+    var timers = [setTimeout(place, 700), setTimeout(place, 2500)];
+    setTimeout(dodgeComplete, 50);
+
+    chrome = {
+      stack: stack, refresh: function () { label(); if (sheet) { closeSheet(false); openSheet(); } }, place: place,
+      open: openSheet, close: closeSheet, corner: function () { return corner; },
+      destroy: function () {
+        closeSheet(false); stack.remove(); spacer.remove();
+        timers.forEach(clearTimeout);
+        doc.removeEventListener('keydown', onKey); doc.removeEventListener('mousedown', onDown); doc.removeEventListener('touchstart', onDown);
+        global.removeEventListener('resize', onResize); global.removeEventListener('scroll', onScroll);
+        chrome = null;
+      }
+    };
+    if (cfg.popover !== false) maybeWelcome(getCfg);
+    return chrome;
+  }
+
+  /** Show the welcome popover if due today (once per local day). Returns true when shown. */
+  function maybeWelcome(getCfg, force) {
+    var c = getCfg();
+    var r = c.get();
+    if (!force && !popoverDue(r)) return false;
+    if (doc.querySelector('.rt-backdrop')) return false;
+    markPopoverShown(r); c.save(r);
+    var sm = summary(c, new Date());
+    var lastFocus = doc.activeElement;
+    var back = el('div', { class: 'rt-backdrop', 'data-rt-welcome': '1' });
+    var box = el('div', { class: 'rt-pop', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'rt-pop-h', 'aria-describedby': 'rt-pop-d' });
+    var x = el('button', { type: 'button', class: 'rt-x', 'aria-label': 'Close', 'data-rt-pop-close': '1', text: '\u00d7' });
+    box.appendChild(x);
+    box.appendChild(el('h2', { id: 'rt-pop-h', text: c.title ? 'Welcome back to ' + c.title : 'Welcome back' }));
+    var d = el('div', { id: 'rt-pop-d' });
+    d.appendChild(el('p', { 'data-rt-pop-pace': '1', text: (sm.met ? 'You met today\u2019s pace: ' : 'Today: ') + sm.pace + '.' }));
+    d.appendChild(el('p', { 'data-rt-pop-streak': String(sm.current), text: sm.streak + '.' }));
+    if (sm.milestone) d.appendChild(el('p', { 'data-rt-pop-milestone': '1', text: 'Next milestone: ' + sm.milestone + '.' }));
+    if (sm.forecast) d.appendChild(el('p', { 'data-rt-pop-forecast': '1', text: sm.forecast }));
+    box.appendChild(d);
+    var row = el('div', { class: 'rt-row' });
+    var cont = c.continueHref ? el('a', { class: 'rt-btn rt-btn--primary', href: c.continueHref, 'data-rt-pop-continue': '1', text: 'Continue' + (c.continueTitle ? ': ' + c.continueTitle : '') }) : el('button', { type: 'button', class: 'rt-btn rt-btn--primary', 'data-rt-pop-continue': '1', text: 'Continue' });
+    row.appendChild(cont);
+    if (c.diaryHref) row.appendChild(el('a', { class: 'rt-btn', href: c.diaryHref, 'data-rt-pop-diary': '1', text: 'Diary' }));
+    box.appendChild(row);
+    var off = el('input', { type: 'checkbox', id: 'rt-pop-off', 'data-rt-pop-off': '1' });
+    box.appendChild(el('p', { class: 'rt-muted' }, [el('label', { for: 'rt-pop-off' }, [off, 'Don\u2019t show on load']), el('span', { class: 'rt-sr', text: ' You can turn it back on from the Streak button.' })]));
+    off.addEventListener('change', function () { var y = c.get(); setPopoverOnLoad(y, !off.checked); c.save(y); });
+    back.appendChild(box);
+    function close() {
+      back.remove();
+      doc.removeEventListener('keydown', key, true);
+      if (lastFocus && lastFocus.focus && doc.contains(lastFocus)) lastFocus.focus();
+    }
+    function key(e) {
+      if (e.key === 'Escape' || e.key === 'Esc') { e.preventDefault(); close(); return; }
+      if (e.key !== 'Tab') return;
+      var f = focusables(box);
+      if (!f.length) { e.preventDefault(); return; }
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && (doc.activeElement === first || !box.contains(doc.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (doc.activeElement === last || !box.contains(doc.activeElement))) { e.preventDefault(); first.focus(); }
+    }
+    x.addEventListener('click', close);
+    if (cont.tagName === 'BUTTON') cont.addEventListener('click', close);
+    back.addEventListener('mousedown', function (e) { if (e.target === back) close(); });
+    doc.addEventListener('keydown', key, true);
+    doc.body.appendChild(back);
+    cont.focus();
+    return true;
+  }
+
   var api = {
     CORE_VERSION: CORE_VERSION, REVIEW_STEPS: REVIEW_STEPS, BADGES: BADGES,
     localDay: localDay, localIso: localIso, addDays: addDays, dayDiff: dayDiff, weekStart: weekStart, fullDate: fullDate,
@@ -848,8 +1239,11 @@
     diary: diary, diaryCategories: diaryCategories, weekly: weekly, nextUnit: nextUnit,
     notificationSupport: notificationSupport, enableReminders: enableReminders, disableReminders: disableReminders,
     reminderDelay: reminderDelay,
+    popoverDue: popoverDue, markPopoverShown: markPopoverShown, setPopoverOnLoad: setPopoverOnLoad,
+    activity: activity, nextMilestone: nextMilestone, pickCorner: pickCorner,
     ui: { injectStyles: injectStyles, agoBadge: agoBadge, catBadge: catBadge, decorate: decorate, banner: banner,
-      scheduleReminder: scheduleReminder, renderHome: renderHome, renderMarkComplete: renderMarkComplete, renderDiary: renderDiary }
+      scheduleReminder: scheduleReminder, renderHome: renderHome, renderMarkComplete: renderMarkComplete, renderDiary: renderDiary,
+      renderStrip: renderStrip, mountChrome: mountChrome, welcome: maybeWelcome, occupiedRects: occupiedRects, refreshChrome: function () { if (chrome) chrome.refresh(); } }
   };
   global.RetentionCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

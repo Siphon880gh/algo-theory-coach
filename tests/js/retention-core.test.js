@@ -214,3 +214,61 @@ test('reminders: requestPermission result is stored', async () => {
   assert.strictEqual(r.reminder.permission, 'denied');
   assert.strictEqual(r.reminder.time, '07:30');
 });
+
+// ---- v2: welcome popover once per local day, activity strip, next milestone, corner choice
+test('welcome popover: due once per local day; marked shown hides it until tomorrow; off stays off', () => {
+  const r = fresh();
+  assert.deepStrictEqual(r.popover, { onLoad: true, lastShownOn: null });
+  assert.strictEqual(C.popoverDue(r, at('2026-11-26', '08')), true);
+  C.markPopoverShown(r, at('2026-11-26', '08'));
+  assert.strictEqual(r.popover.lastShownOn, '2026-11-26');
+  assert.strictEqual(C.popoverDue(r, at('2026-11-26', '23')), false);
+  assert.strictEqual(C.popoverDue(r, at('2026-11-27', '00')), true);
+  C.setPopoverOnLoad(r, false);
+  assert.strictEqual(C.popoverDue(r, at('2026-11-28')), false);
+  const back = C.normalize(JSON.parse(JSON.stringify(r)));
+  assert.strictEqual(back.popover.onLoad, false);
+  C.setPopoverOnLoad(back, true);
+  assert.strictEqual(C.popoverDue(back, at('2026-11-28')), true);
+  assert.strictEqual(C.normalize({ popover: 'junk' }).popover.onLoad, true);
+});
+
+test('activity: 30 local days, active / frozen / missed / today', () => {
+  const r = fresh();
+  for (let d = 1; d <= 7; d++) C.complete(r, U('u' + d), { now: at('2026-11-' + String(d).padStart(2, '0')) });
+  C.complete(r, U('u9'), { now: at('2026-11-09') });
+  const a = C.activity(r, at('2026-11-12'), 30);
+  assert.strictEqual(a.length, 30);
+  assert.strictEqual(a[29].day, '2026-11-12');
+  assert.strictEqual(a[29].state, 'today');
+  const by = Object.fromEntries(a.map(x => [x.day, x]));
+  assert.strictEqual(by['2026-11-07'].state, 'active');
+  assert.strictEqual(by['2026-11-08'].state, 'frozen');
+  assert.strictEqual(by['2026-11-10'].state, 'missed');
+  assert.strictEqual(by['2026-11-09'].count, 1);
+});
+
+test('nextMilestone: unearned badge first, else next streak step', () => {
+  const r = fresh();
+  assert.strictEqual(C.nextMilestone(r, at('2026-11-01')), 'First lesson completed');
+  C.complete(r, U('a'), { now: at('2026-11-01') });
+  assert.match(C.nextMilestone(r, at('2026-11-01'), { badges: false }), /^3-day streak \(2 to go\)$/);
+});
+
+test('pickCorner: bottom-right when free; bottom-left when an AI panel or chat sits bottom-right; lift above a full-width bar', () => {
+  const vw = 1024, vh = 768, size = { w: 90, h: 96 };
+  assert.strictEqual(C.pickCorner([], size, { vw, vh }).corner, 'bottom-right');
+  const aiPanel = { left: 900, top: 690, right: 1008, bottom: 752 };
+  const r1 = C.pickCorner([aiPanel], size, { vw, vh });
+  assert.strictEqual(r1.corner, 'bottom-left');
+  assert.strictEqual(r1.lift, 0);
+  const topBar = { left: 0, top: 0, right: 1024, bottom: 60 };
+  assert.strictEqual(C.pickCorner([topBar], size, { vw, vh }).corner, 'bottom-right');
+  const bar = { left: 0, top: 708, right: 1024, bottom: 768 };
+  const r2 = C.pickCorner([bar], size, { vw, vh });
+  assert.strictEqual(r2.corner, 'bottom-right');
+  assert.strictEqual(r2.lift, 768 - 16 - 708 + 8);
+  const both = C.pickCorner([bar, { left: 0, top: 600, right: 200, bottom: 708 }], size, { vw, vh });
+  assert.strictEqual(both.corner, 'bottom-right');
+  assert.strictEqual(C.pickCorner([aiPanel], size, { vw, vh, order: ['bottom-left', 'bottom-right'] }).corner, 'bottom-left');
+});
