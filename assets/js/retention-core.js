@@ -1600,9 +1600,18 @@
       var n = list[i];
       if (n.closest('.rt-ui')) continue;
       if (n.tagName === 'DIALOG') { var modal = true; try { modal = n.matches(':modal'); } catch (e) { modal = true; } if (!modal) continue; }
-      if (n.getClientRects().length) return true;
+      if (shownModal(n)) return true;
     }
     return false;
+  }
+  /** A closed drawer often keeps aria-modal but is hidden, inert or slid off screen: only a modal the user can see counts. */
+  function shownModal(n) {
+    if (!n.getClientRects().length) return false;
+    var s = global.getComputedStyle ? global.getComputedStyle(n) : null;
+    if (s && (s.visibility === 'hidden' || s.opacity === '0')) return false;
+    if (n.closest && n.closest('[hidden], [aria-hidden="true"], [inert]')) return false;
+    var r = n.getBoundingClientRect();
+    return r.right > 0 && r.bottom > 0 && r.left < global.innerWidth && r.top < global.innerHeight;
   }
   function maybeWelcome(getCfg, force) {
     var c = getCfg();
