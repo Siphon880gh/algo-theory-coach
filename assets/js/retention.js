@@ -206,6 +206,7 @@
     }
     return {
       get: get, save: save, labels: LABELS, title: 'Algo Theory Coach',
+      theme: { surface: 'var(--panel)', ink: 'var(--text)', heading: 'var(--heading)', muted: 'var(--muted)', line: 'var(--panel-edge)', accent: 'var(--accent)', accentInk: 'var(--accent-ink)', accentSoft: 'var(--accent-soft)', radius: 'var(--radius-lg)', font: 'var(--font-sans)' },
       continueHref: next ? href('guides', next.slug) : null, continueTitle: next ? next.title : '',
       modules: mods, dueReviews: due.length, reviewHref: due.length ? (due[0].href || unitHref(due[0].unitId)) : null,
       diaryHref: HAS.diary ? R.diary : null, stale: stale, badges: true,
