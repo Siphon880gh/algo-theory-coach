@@ -12,7 +12,7 @@ namespace TheoryCore;
 final class Retention
 {
     /**
-     * Units the retention layer counts: one guide per family, plus its quiz and coach when authored.
+     * Units the retention layer counts: one guide per family, plus its quiz, coach session, drill, case and cheatsheet when authored.
      *
      * @return array<string, mixed>
      */
@@ -31,6 +31,9 @@ final class Retention
                 'track' => (string) ($f['track_label'] ?? ''),
                 'quiz' => is_file($root . '/quizzes/' . $slug . '.json'),
                 'coach' => is_file($root . '/coaching/' . $slug . '.json'),
+                'drill' => is_file($root . '/drills/' . $slug . '.json'),
+                'case' => is_file($root . '/cases/' . $slug . '.json'),
+                'cheatsheet' => is_file($root . '/cheatsheets/' . $slug . '.json'),
             ];
         }
 
@@ -40,6 +43,9 @@ final class Retention
                 'guide' => url('/guides/__S__'),
                 'quiz' => url('/quiz/__S__'),
                 'coach' => url('/coach/__S__'),
+                'drill' => url('/drill/__S__'),
+                'case' => url('/case/__S__'),
+                'cheatsheet' => url('/cheatsheet/__S__'),
                 'diary' => url('/diary'),
             ],
             'beginner' => ProgressSchema::BEGINNER_LEARNING_ORDER,

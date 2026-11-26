@@ -1,7 +1,8 @@
 /**
  * Algo Theory Coach — learning retention (weng/.agents/skills/learning-retention).
  * Units: guide:<slug> (lesson, Mark complete), quiz:<slug> (quiz, completes on a pass of 80%+),
- * coach:<slug> (lesson, completes when the scenario finishes). Opening or scrolling a guide never completes it.
+ * coach:<slug> (lesson, completes when the scenario finishes), drill:<slug> (quiz), case:<slug> and cheatsheet:<slug> (lessons).
+ * Every item page has a visible Mark complete button (quizzes and coach sessions too). Opening or scrolling never completes.
  * State lives in theory_core_progress_v1 under `retention` (see progress.js / src/ProgressSchema.php).
  */
 (function () {
@@ -23,15 +24,19 @@
   function get() { var s = P.load(); return C.normalize(s.retention, OPTS); }
   function save(r) { var s = P.load(); s.retention = r; s.recovery = false; P.save(s); }
   function href(kind, slug) {
-    var tpl = { guides: R.guide, quiz: R.quiz, coach: R.coach }[kind];
+    var tpl = { guides: R.guide, quiz: R.quiz, coach: R.coach, drill: R.drill, 'case': R['case'], cheatsheet: R.cheatsheet }[kind];
     return tpl ? tpl.replace('__S__', encodeURIComponent(slug)) : base;
   }
   function guideUnit(slug) { var f = bySlug[slug] || { title: slug, track: '' }; return { id: 'guide:' + slug, title: f.title, path: [f.track], kind: 'lesson', href: href('guides', slug) }; }
   function quizUnit(slug) { var f = bySlug[slug] || { title: slug, track: '' }; return { id: 'quiz:' + slug, title: 'Quiz: ' + f.title, path: [f.track], kind: 'quiz', href: href('quiz', slug) }; }
   function coachUnit(slug) { var f = bySlug[slug] || { title: slug, track: '' }; return { id: 'coach:' + slug, title: 'Coach: ' + f.title, path: [f.track], kind: 'lesson', href: href('coach', slug) }; }
+  function drillUnit(slug) { var f = bySlug[slug] || { title: slug, track: '' }; return { id: 'drill:' + slug, title: 'Drill: ' + f.title, path: [f.track], kind: 'quiz', href: href('drill', slug) }; }
+  function caseUnit(slug) { var f = bySlug[slug] || { title: slug, track: '' }; return { id: 'case:' + slug, title: 'Case: ' + f.title, path: [f.track], kind: 'lesson', href: href('case', slug) }; }
+  function sheetUnit(slug) { var f = bySlug[slug] || { title: slug, track: '' }; return { id: 'cheatsheet:' + slug, title: 'Cheatsheet: ' + f.title, path: [f.track], kind: 'lesson', href: href('cheatsheet', slug) }; }
   function unitHref(id) {
     var p = id.split(':');
-    return p[0] === 'guide' ? href('guides', p[1]) : p[0] === 'quiz' ? href('quiz', p[1]) : p[0] === 'coach' ? href('coach', p[1]) : null;
+    var k = { guide: 'guides', quiz: 'quiz', coach: 'coach', drill: 'drill', 'case': 'case', cheatsheet: 'cheatsheet' }[p[0]];
+    return k ? href(k, p[1]) : null;
   }
   function allUnits() {
     var out = [];
@@ -39,6 +44,9 @@
       out.push(guideUnit(f.slug));
       if (f.quiz) out.push(quizUnit(f.slug));
       if (f.coach) out.push(coachUnit(f.slug));
+      if (f.drill) out.push(drillUnit(f.slug));
+      if (f['case']) out.push(caseUnit(f.slug));
+      if (f.cheatsheet) out.push(sheetUnit(f.slug));
     });
     return out;
   }
@@ -67,6 +75,32 @@
     var fresh = C.updateBadges(r, { modulesFinished: modules(r).filter(function (m) { return m.total && !m.remaining; }).length });
     save(r);
     if (fresh.length) C.ui.banner('Badge earned: ' + fresh.map(function (b) { return b.name; }).join(', ') + '.');
+    redrawItems();
+    if (C.ui.refreshChrome) C.ui.refreshChrome();
+  }
+
+  /** A visible Mark complete button at the end of every item page: quiz, coach, drill, case, cheatsheet. */
+  var itemBoxes = [];
+  function redrawItems() { itemBoxes.forEach(function (fn) { fn(); }); }
+  function initItemPages() {
+    [
+      ['main.quiz-page[data-slug]', quizUnit, 'Mark quiz complete', 'Quiz completion'],
+      ['main.coach-page[data-slug]', coachUnit, 'Mark coach session complete', 'Coach session completion'],
+      ['main.drill-page[data-slug]', drillUnit, 'Mark drill complete', 'Drill completion'],
+      ['main.case-page[data-slug]', caseUnit, 'Mark case complete', 'Case completion'],
+      ['main.cheatsheet[data-slug]', sheetUnit, 'Mark cheatsheet complete', 'Cheatsheet completion']
+    ].forEach(function (t) {
+      var main = document.querySelector(t[0]);
+      if (!main) return;
+      var unit = t[1](main.getAttribute('data-slug'));
+      var box = document.createElement('section');
+      box.id = 'rt-complete';
+      box.setAttribute('aria-label', t[3]);
+      main.appendChild(box);
+      var draw = function () { C.ui.renderMarkComplete(box, { get: get, save: save, unit: unit, label: t[2], onComplete: afterComplete }); };
+      itemBoxes.push(draw);
+      draw();
+    });
   }
   function markGuideRead(slug) {
     var s = P.load();
@@ -156,6 +190,10 @@
     draw(sec);
   }
   function draw(sec) {
+    C.ui.renderHome(sec, homeCfg());
+  }
+  /** Shared by the home panel, the corner progress panel and the welcome popover. */
+  function homeCfg() {
     var r = get();
     var nextId = C.nextUnit(r, guideOrder());
     var next = nextId ? bySlug[nextId.split(':')[1]] : null;
@@ -166,13 +204,13 @@
       var rec = C.categoryRecency(r, allUnits());
       stale = C.staleCategories(rec, 14).map(function (k) { return { key: k, days: rec[k].ago.days }; });
     }
-    C.ui.renderHome(sec, {
-      get: get, save: save, labels: LABELS,
+    return {
+      get: get, save: save, labels: LABELS, title: 'Algo Theory Coach',
       continueHref: next ? href('guides', next.slug) : null, continueTitle: next ? next.title : '',
       modules: mods, dueReviews: due.length, reviewHref: due.length ? (due[0].href || unitHref(due[0].unitId)) : null,
       diaryHref: HAS.diary ? R.diary : null, stale: stale, badges: true,
       onChange: function () {}, onReminder: function () { if (HAS.reminders) schedule(); }
-    });
+    };
   }
 
   function schedule() {
@@ -198,5 +236,5 @@
 
   var HAS = { review: true, reminders: true, recency: true, diary: true };
   window.TheoryRetention = { get: get, quizFinished: quizFinished, coachFinished: coachFinished, quizAnswer: quizAnswer };
-  initGuidePage(); initQuizPage(); initHome(); markDueOnQuizPage(); schedule(); initLists(); initDiary();
+  initGuidePage(); initQuizPage(); initItemPages(); initHome(); markDueOnQuizPage(); schedule(); initLists(); initDiary();
 })();
