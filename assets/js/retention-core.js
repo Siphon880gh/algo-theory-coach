@@ -1420,8 +1420,22 @@
     var prog = el('button', { type: 'button', class: 'rt-cbtn', 'data-rt-progress-btn': '1', 'aria-expanded': 'false', 'aria-controls': 'rt-sheet', 'aria-haspopup': 'dialog' });
     stack.appendChild(prog);
     var hl = null;
+    var hlWait = null, hlWaitT = null;
     if (cfg.highlight && cfg.highlight.cards && doc.querySelector(cfg.highlight.cards)) hl = mountHighlight(stack, getCfg);
     doc.body.appendChild(stack);
+    // Cards drawn later (fetched lists): add the highlight button once the first card appears.
+    function stopHlWait() { if (hlWait) hlWait.disconnect(); hlWait = null; clearTimeout(hlWaitT); }
+    if (!hl && cfg.highlight && cfg.highlight.cards && global.MutationObserver) {
+      hlWait = new global.MutationObserver(function () {
+        var c = getCfg();
+        if (hl || !c.highlight || !doc.querySelector(c.highlight.cards)) return;
+        stopHlWait();
+        hl = mountHighlight(stack, getCfg);
+        place();
+      });
+      hlWait.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-rt-unit', 'class'] });
+      hlWaitT = setTimeout(stopHlWait, 120000);
+    }
     var spacer = el('div', { 'data-rt-corner-spacer': '1', 'aria-hidden': 'true', style: 'height:130px' });
     doc.body.appendChild(spacer);
     var CORNER_KEY = 'rt-corner-v1';
@@ -1518,7 +1532,7 @@
       refresh: function () { if (hl) hl.mark(); label(); if (sheet) { closeSheet(false); openSheet(); } },
       destroy: function () {
         closeSheet(false); stack.remove(); spacer.remove();
-        timers.forEach(clearTimeout); if (mo) mo.disconnect(); clearTimeout(moT); if (hl) hl.destroy();
+        timers.forEach(clearTimeout); if (mo) mo.disconnect(); clearTimeout(moT); stopHlWait(); if (hl) hl.destroy();
         doc.removeEventListener('keydown', onKey); doc.removeEventListener('mousedown', onDown); doc.removeEventListener('touchstart', onDown);
         global.removeEventListener('resize', onResize); global.removeEventListener('scroll', onScroll);
         chrome = null;
@@ -1580,11 +1594,26 @@
   }
 
   /** Show the welcome popover if due today (once per local day). Returns true when shown. */
+  function otherModalOpen() {
+    var list = doc.querySelectorAll('dialog[open], [aria-modal="true"]');
+    for (var i = 0; i < list.length; i++) {
+      var n = list[i];
+      if (n.closest('.rt-ui')) continue;
+      if (n.tagName === 'DIALOG') { var modal = true; try { modal = n.matches(':modal'); } catch (e) { modal = true; } if (!modal) continue; }
+      if (n.getClientRects().length) return true;
+    }
+    return false;
+  }
   function maybeWelcome(getCfg, force) {
     var c = getCfg();
     var r = c.get();
     if (!force && !popoverDue(r)) return false;
     if (doc.querySelector('.rt-backdrop')) return false;
+    // Never stack on the app's own modal (a first-run <dialog>, a sign-in sheet): wait until it closes.
+    if (!force && otherModalOpen()) {
+      var tries = 0, w = setInterval(function () { tries++; if (!otherModalOpen()) { clearInterval(w); maybeWelcome(getCfg, false); } else if (tries > 240) clearInterval(w); }, 500);
+      return false;
+    }
     markPopoverShown(r); c.save(r);
     var m = model(c, new Date());
     var lastFocus = doc.activeElement;
