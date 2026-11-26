@@ -110,6 +110,29 @@
     afterComplete();
   }
 
+  /** Called by quiz.js for each answer: misses are scheduled 1, 3, 7 days out. */
+  function quizAnswer(slug, index, correct, prompt) {
+    var r = get();
+    C.recordAnswer(r, { id: 'quiz:' + slug + '#' + index, unitId: 'quiz:' + slug, correct: !!correct, title: prompt || null, href: href('quiz', slug) });
+    save(r);
+  }
+  function markDueOnQuizPage() {
+    var live = document.querySelector('.quiz-live[data-slug]');
+    if (!live) return;
+    var slug = live.getAttribute('data-slug');
+    var due = C.dueReviews(get()).filter(function (q) { return q.unitId === 'quiz:' + slug; });
+    if (!due.length) return;
+    var note = document.createElement('p');
+    note.className = 'rt-muted';
+    note.setAttribute('data-rt-review-note', String(due.length));
+    note.textContent = due.length + ' question' + (due.length === 1 ? '' : 's') + ' here ' + (due.length === 1 ? 'is' : 'are') + ' due for review (marked below).';
+    live.parentNode.insertBefore(note, live);
+    due.forEach(function (q) {
+      var i = q.id.split('#')[1];
+      var sec = live.querySelector('.quiz-item[data-index="' + i + '"]');
+      if (sec) { sec.setAttribute('data-rt-due', '1'); var tag = document.createElement('p'); tag.className = 'rt-muted'; tag.textContent = 'Due for review'; sec.insertBefore(tag, sec.firstChild); }
+    });
+  }
 
   function initQuizPage() {
     var live = document.querySelector('.quiz-live[data-slug]');
@@ -155,7 +178,7 @@
 
 
 
-  var HAS = { review: false, reminders: false, recency: false, diary: false };
-  window.TheoryRetention = { get: get, quizFinished: quizFinished, coachFinished: coachFinished };
-  initGuidePage(); initQuizPage(); initHome();
+  var HAS = { review: true, reminders: false, recency: false, diary: false };
+  window.TheoryRetention = { get: get, quizFinished: quizFinished, coachFinished: coachFinished, quizAnswer: quizAnswer };
+  initGuidePage(); initQuizPage(); initHome(); markDueOnQuizPage();
 })();

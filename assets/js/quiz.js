@@ -81,6 +81,10 @@
             ? String(item.whyRight || 'Correct.')
             : String((item.whyWrong && item.whyWrong[choice]) || 'Not quite.');
         }
+        // Learning retention: misses come back for review in 1, 3, then 7 days.
+        if (window.TheoryRetention && window.TheoryRetention.quizAnswer && slug) {
+          try { window.TheoryRetention.quizAnswer(slug, index, ok, String(item.prompt || item.question || '')); } catch (e) {}
+        }
         finishIfDone();
       });
     });
