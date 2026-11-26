@@ -181,9 +181,17 @@
     C.ui.scheduleReminder({ get: get, save: save, title: 'Algo Theory Coach', body: 'Time for today\u2019s lesson.', href: nextId ? unitHref(nextId) : base });
   }
 
+  function initLists() {
+    var hub = document.querySelector('main.guides-hub');
+    if (!hub) return;
+    C.ui.injectStyles();
+    Array.prototype.forEach.call(hub.querySelectorAll('li[data-slug]'), function (li) { li.setAttribute('data-rt-unit', 'guide:' + li.getAttribute('data-slug')); });
+    var r = get();
+    C.ui.decorate(hub, r, C.categoryRecency(r, allUnits().filter(function (u) { return u.id.indexOf('guide:') === 0; })));
+  }
 
 
-  var HAS = { review: true, reminders: true, recency: false, diary: false };
+  var HAS = { review: true, reminders: true, recency: true, diary: false };
   window.TheoryRetention = { get: get, quizFinished: quizFinished, coachFinished: coachFinished, quizAnswer: quizAnswer };
-  initGuidePage(); initQuizPage(); initHome(); markDueOnQuizPage(); schedule();
+  initGuidePage(); initQuizPage(); initHome(); markDueOnQuizPage(); schedule(); initLists();
 })();

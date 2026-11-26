@@ -214,7 +214,7 @@ final class Guides
         $parts[] = '<h1>Guides</h1>';
         foreach (Catalog::groupedByTrackLabel() as $label => $families) {
             $parts[] = '<section class="track" data-track-label="' . self::h($label) . '">';
-            $parts[] = '<h2>' . self::h($label) . '</h2><ul>';
+            $parts[] = '<h2 data-rt-cat="' . self::h($label) . '">' . self::h($label) . '</h2><ul>';
             foreach ($families as $family) {
                 $slug = (string) $family['slug'];
                 $title = (string) ($family['title'] ?? $slug);
