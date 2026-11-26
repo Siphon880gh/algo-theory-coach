@@ -41,6 +41,10 @@
         api.recordQuizResult(slug, correct, total);
       } catch (e) {}
     }
+    // Learning retention: a pass (80%+) completes the quiz unit; a fail does not.
+    if (window.TheoryRetention && slug) {
+      try { window.TheoryRetention.quizFinished(slug, correct, total); } catch (e) {}
+    }
   }
 
   live.querySelectorAll('.quiz-item').forEach(function (section) {

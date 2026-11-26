@@ -108,7 +108,13 @@
     state.done = (session.nodes[current] && session.nodes[current].type) === 'success';
     showFeedback(explanation);
     render();
-    if (state.done) markComplete();
+    if (state.done) {
+      markComplete();
+      // Learning retention: finishing the scenario is an explicit completion of the coach unit.
+      if (window.TheoryRetention && slug) {
+        try { window.TheoryRetention.coachFinished(slug); } catch (e) {}
+      }
+    }
   }
 
   function bindChoices() {

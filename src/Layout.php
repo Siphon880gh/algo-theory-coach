@@ -107,6 +107,10 @@ JS;
         foreach ($scripts as $src) {
             $parts[] = '<script src="' . e((string) $src) . '"></script>';
         }
+        $parts[] = Retention::catalogScriptTag();
+        foreach (Retention::scripts($scripts) as $src) {
+            $parts[] = '<script src="' . e($src) . '"></script>';
+        }
         $parts[] = '</body>';
         $parts[] = '</html>';
 
