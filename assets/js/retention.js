@@ -190,8 +190,13 @@
     C.ui.decorate(hub, r, C.categoryRecency(r, allUnits().filter(function (u) { return u.id.indexOf('guide:') === 0; })));
   }
 
+  function initDiary() {
+    var box = document.getElementById('rt-diary');
+    if (!box) return;
+    C.ui.renderDiary(box, { get: get, hrefFor: function (id) { return unitHref(id); } });
+  }
 
-  var HAS = { review: true, reminders: true, recency: true, diary: false };
+  var HAS = { review: true, reminders: true, recency: true, diary: true };
   window.TheoryRetention = { get: get, quizFinished: quizFinished, coachFinished: coachFinished, quizAnswer: quizAnswer };
-  initGuidePage(); initQuizPage(); initHome(); markDueOnQuizPage(); schedule(); initLists();
+  initGuidePage(); initQuizPage(); initHome(); markDueOnQuizPage(); schedule(); initLists(); initDiary();
 })();

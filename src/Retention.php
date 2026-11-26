@@ -72,4 +72,19 @@ final class Retention
 
         return $out;
     }
+
+    /** Diary page: completed units newest first, grouped by day, filterable by track (rendered by retention.js). */
+    public static function diaryHtml(): string
+    {
+        $parts = [];
+        $parts[] = '<h1>Diary</h1>';
+        $parts[] = '<p class="lede">Everything you marked complete or passed, newest first. Each row links back to the lesson.</p>';
+        $parts[] = '<section id="rt-diary" aria-label="Completed lessons"><p class="slot">Loading your diary…</p></section>';
+        $parts[] = '<noscript><p>The diary reads progress saved in this browser and needs JavaScript.</p></noscript>';
+
+        return Layout::document('Diary — Algo Theory Coach', implode("\n", $parts), [
+            'mainClass' => 'diary-page',
+            'navActive' => 'diary',
+        ]);
+    }
 }

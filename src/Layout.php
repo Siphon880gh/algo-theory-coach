@@ -86,6 +86,7 @@ JS;
         $parts[] = '<nav class="site-nav" aria-label="Primary">';
         $parts[] = '<a class="nav-link' . $homeClass . '" href="' . e(url('/')) . '">Home</a>';
         $parts[] = '<a class="nav-link' . $guidesClass . '" href="' . e(url('/guides')) . '">Guides</a>';
+        $parts[] = '<a class="nav-link' . ($navActive === 'diary' ? ' is-active' : '') . '" href="' . e(url('/diary')) . '"' . ($navActive === 'diary' ? ' aria-current="page"' : '') . '>Diary</a>';
         $parts[] = '</nav>';
         $parts[] = '<button type="button" class="theme-switch" aria-pressed="true" aria-label="Night theme. Switch to day.">';
         $parts[] = '<span class="theme-switch-icon" aria-hidden="true"></span>';

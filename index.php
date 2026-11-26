@@ -26,6 +26,11 @@ $path = request_path();
 
 header('Content-Type: text/html; charset=UTF-8');
 
+if ($path === '/diary') {
+    echo \TheoryCore\Retention::diaryHtml();
+    exit;
+}
+
 if ($path === '/guides') {
     echo Guides::hubHtml();
     exit;
