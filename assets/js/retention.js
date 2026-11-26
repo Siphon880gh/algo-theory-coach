@@ -237,4 +237,5 @@
   var HAS = { review: true, reminders: true, recency: true, diary: true };
   window.TheoryRetention = { get: get, quizFinished: quizFinished, coachFinished: coachFinished, quizAnswer: quizAnswer };
   initGuidePage(); initQuizPage(); initItemPages(); initHome(); markDueOnQuizPage(); schedule(); initLists(); initDiary();
+  if (C.ui.mountChrome) C.ui.mountChrome(homeCfg);
 })();
