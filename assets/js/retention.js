@@ -175,10 +175,15 @@
     });
   }
 
+  function schedule() {
+    var r = get();
+    var nextId = C.nextUnit(r, guideOrder());
+    C.ui.scheduleReminder({ get: get, save: save, title: 'Algo Theory Coach', body: 'Time for today\u2019s lesson.', href: nextId ? unitHref(nextId) : base });
+  }
 
 
 
-  var HAS = { review: true, reminders: false, recency: false, diary: false };
+  var HAS = { review: true, reminders: true, recency: false, diary: false };
   window.TheoryRetention = { get: get, quizFinished: quizFinished, coachFinished: coachFinished, quizAnswer: quizAnswer };
-  initGuidePage(); initQuizPage(); initHome(); markDueOnQuizPage();
+  initGuidePage(); initQuizPage(); initHome(); markDueOnQuizPage(); schedule();
 })();
