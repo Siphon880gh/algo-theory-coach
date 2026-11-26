@@ -553,6 +553,32 @@
     return null;
   }
 
+  /**
+   * Progress toward the next milestone: { id, name, have, need, unit } or null.
+   * opts: { badges: bool, modules: [{ title, done, total }] }
+   */
+  function milestoneProgress(r, now, opts) {
+    opts = opts || {};
+    var s = streak(r, now);
+    if (opts.badges !== false) {
+      for (var i = 0; i < BADGES.length; i++) {
+        var b = BADGES[i];
+        if (r.badges.earned[b.id]) continue;
+        if (b.id === 'first-lesson') return { id: b.id, name: b.name, have: r.history.some(function (h) { return h.kind === 'lesson'; }) ? 1 : 0, need: 1, unit: 'lesson' };
+        if (b.id === 'first-module') {
+          var best = null;
+          (opts.modules || []).forEach(function (m) { if (m.total && (!best || m.done / m.total > best.done / best.total)) best = m; });
+          if (best) return { id: b.id, name: b.name + (best.title ? ': ' + best.title : ''), have: best.done, need: best.total, unit: 'done' };
+          continue;
+        }
+        if (b.id === 'first-perfect') return { id: b.id, name: b.name, have: 0, need: 1, unit: 'perfect quiz' };
+        if (b.id === 'streak-7') return { id: b.id, name: b.name, have: Math.min(s.current, 7), need: 7, unit: 'days' };
+      }
+    }
+    for (var j = 0; j < STREAK_STEPS.length; j++) if (STREAK_STEPS[j] > s.current) return { id: 'streak-' + STREAK_STEPS[j], name: STREAK_STEPS[j] + '-day streak', have: s.current, need: STREAK_STEPS[j], unit: 'days' };
+    return null;
+  }
+
   function overlaps(a, b) { return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top; }
   /**
    * Choose a free bottom corner for a fixed stack of size {w, h}.
@@ -709,102 +735,62 @@
    */
   function renderHome(container, cfg) {
     if (!container) return;
-    injectStyles();
-    var r = cfg.get();
-    var L = cfg.labels || {};
-    var lesson = L.lesson || 'lesson', lessons = L.lessons || 'lessons', quiz = L.quiz || 'quiz', quizzes = L.quizzes || 'quizzes';
+    injectChromeStyles(cfg.theme);
     var now = new Date();
-    var c = todayCounts(r, now), s = streak(r, now), b = behind(r, now), met = goalMet(r, now);
-    container.innerHTML = '';
-    container.classList.add('rt-panel');
+    var m = model(cfg, now);
+    var r = m.r;
     var idp = cfg.idp || 'rt-';
+    container.innerHTML = '';
+    container.classList.add('rt-ui', 'rt-home');
     container.setAttribute('aria-labelledby', idp + 'home-h');
     var live = el('div', { 'aria-live': 'polite' });
-    container.appendChild(el('h2', { id: idp + 'home-h', text: 'Your pace' }));
+    container.appendChild(el('h2', { class: 'rt-h', id: idp + 'home-h', text: headline(m, cfg) }));
+    live.appendChild(el('p', { class: 'rt-sub', 'data-rt-behind': m.b.freshStart ? 'fresh' : m.b.lessons > 0 && !m.met ? String(m.b.lessons) : null, text: subline(m) }));
     container.appendChild(live);
-
-    var paceText = c.lessons + ' of ' + r.pace.lessonsPerDay + ' ' + (r.pace.lessonsPerDay === 1 ? lesson : lessons) + ' today';
-    if (cfg.quizGoal !== false && r.pace.quizzesPerDay > 0) paceText += ' \u00b7 ' + c.quizzes + ' of ' + r.pace.quizzesPerDay + ' ' + (r.pace.quizzesPerDay === 1 ? quiz : quizzes);
-    live.appendChild(el('p', { 'data-rt-today': '1', text: paceText }));
-
-    if (met && r.doneForToday !== today(now)) {
-      var box = el('div', { class: 'rt-complete', 'data-rt-done-today': '1' }, [
-        el('p', { class: 'rt-done', text: 'You met today\u2019s pace.' }),
-        el('p', { text: 'Streak: ' + s.current + (s.current === 1 ? ' day' : ' days') + '.' })
-      ]);
-      var more = cfg.continueHref ? el('a', { class: 'rt-btn rt-btn--primary', href: cfg.continueHref, text: 'Do one more' }) : null;
-      var stop = el('button', { type: 'button', class: 'rt-btn', text: 'I\u2019m done for today' });
+    container.appendChild(statsBlock(m));
+    var ms = milestoneCard(m); if (ms) container.appendChild(ms);
+    if (m.met && r.doneForToday !== today(now)) {
+      var stop = el('button', { type: 'button', class: 'rt-ghost', 'data-rt-done-today': '1', text: 'I\u2019m done for today' });
       stop.addEventListener('click', function () { var x = cfg.get(); x.doneForToday = today(); cfg.save(x); renderHome(container, cfg); });
-      box.appendChild(el('div', { class: 'rt-row' }, [more, stop]));
-      live.appendChild(box);
-    } else if (met) {
-      live.appendChild(el('p', { class: 'rt-done', 'data-rt-done-today': '1', text: 'Done for today. See you tomorrow.' }));
+      var act = actions(cfg, m);
+      act.cta.setAttribute('data-rt-continue', '1');
+      act.row.appendChild(stop);
+      container.appendChild(act.row);
+    } else if (m.met) {
+      container.appendChild(el('p', { class: 'rt-fc', 'data-rt-done-today': '1', text: 'Done for today. See you tomorrow.' }));
+    } else if (cfg.continueHref) {
+      var a2 = actions(cfg, m); a2.cta.setAttribute('data-rt-continue', '1');
+      container.appendChild(a2.row);
     }
-
-    if (cfg.continueHref && !(met && r.doneForToday !== today(now))) {
-      live.appendChild(el('div', { class: 'rt-row' }, [el('a', { class: 'rt-btn rt-btn--primary', href: cfg.continueHref, 'data-rt-continue': '1', text: 'Continue' + (cfg.continueTitle ? ': ' + cfg.continueTitle : '') })]));
+    if (m.fcs.length) {
+      var fl = el('ul', { class: 'rt-list', style: 'margin-top:18px' });
+      m.fcs.forEach(function (f) { fl.appendChild(el('li', { 'data-rt-forecast': f.title }, [el('b', { text: cap(f.title) }), ' ' + (f.done ? 'finished' : f.date ? 'by ' + f.date + ' at your current pace' : f.remaining + ' left')])); });
+      container.appendChild(fl);
     }
-
-    if (b.freshStart) {
-      live.appendChild(el('p', { class: 'rt-muted', 'data-rt-behind': 'fresh', text: 'Welcome back. Fresh start: pick up with one ' + lesson + ' today.' }));
-    } else if (b.lessons > 0 && !met) {
-      var note = el('p', { 'data-rt-behind': String(b.lessons) }, ['You\u2019re ' + b.lessons + ' ' + (b.lessons === 1 ? lesson : lessons) + ' behind your pace. ']);
-      if (cfg.continueHref) note.appendChild(el('a', { href: cfg.continueHref, text: 'Catch up' }));
-      note.appendChild(doc.createTextNode(' or '));
-      var lower = el('button', { type: 'button', class: 'rt-linkbtn', style: 'font:inherit;background:none;border:0;padding:0;text-decoration:underline;color:inherit;cursor:pointer', text: 'lower your pace' });
-      lower.addEventListener('click', function () { var d = container.querySelector('details.rt-settings'); if (d) { d.open = true; var i = d.querySelector('input'); if (i) i.focus(); } });
-      note.appendChild(lower);
-      note.appendChild(doc.createTextNode('?'));
-      live.appendChild(note);
-    }
-
-    var streakLine = 'Streak: ' + s.current + (s.current === 1 ? ' day' : ' days') + ' (best ' + s.best + ')';
-    if (s.freezes > 0) streakLine += ' \u00b7 1 freeze banked';
-    var yday = addDays(today(now), -1);
-    if (s.frozenDays.indexOf(yday) !== -1) streakLine += ' \u00b7 Used a freeze yesterday';
-    live.appendChild(el('p', { 'data-rt-streak': String(s.current), text: streakLine + '.' }));
-
-    (cfg.modules || []).forEach(function (m) {
-      var f = forecast(r, m.remaining, now);
-      var txt;
-      if (f.done) txt = m.title + ': finished.';
-      else if (!f.date) txt = m.title + ': ' + m.remaining + ' left. Set a pace to see a finish date.';
-      else txt = 'At your current pace, you\u2019ll finish ' + m.title + ' by ' + fullDate(f.date + 'T12:00:00') + ' (' + m.remaining + ' left).';
-      live.appendChild(el('p', { 'data-rt-forecast': m.title, text: txt }));
-    });
-
     if (cfg.dueReviews > 0) {
-      var rv = el('p', { 'data-rt-reviews': String(cfg.dueReviews) });
-      rv.appendChild(cfg.reviewHref ? el('a', { href: cfg.reviewHref, text: 'Review ' + cfg.dueReviews + ' missed question' + (cfg.dueReviews === 1 ? '' : 's') }) : doc.createTextNode('Review ' + cfg.dueReviews + ' missed question' + (cfg.dueReviews === 1 ? '' : 's')));
-      live.appendChild(rv);
+      var rv = el('p', { class: 'rt-note', style: 'margin-top:14px', 'data-rt-reviews': String(cfg.dueReviews) });
+      rv.appendChild(cfg.reviewHref ? el('a', { class: 'rt-link', href: cfg.reviewHref, text: 'Review ' + plural(cfg.dueReviews, 'missed question', 'missed questions') }) : doc.createTextNode('Review ' + plural(cfg.dueReviews, 'missed question', 'missed questions')));
+      container.appendChild(rv);
     }
     (cfg.stale || []).slice(0, 2).forEach(function (x) {
-      live.appendChild(el('p', { class: 'rt-muted', 'data-rt-stale': x.key, text: 'Haven\u2019t touched ' + x.key + ' in ' + x.days + 'd.' }));
+      container.appendChild(el('p', { class: 'rt-fc', 'data-rt-stale': x.key, text: 'You haven\u2019t touched ' + x.key + ' in ' + x.days + ' days.' }));
     });
-
-    if (cfg.badges) {
-      var earned = Object.keys(r.badges.earned);
-      var names = BADGES.filter(function (x) { return earned.indexOf(x.id) !== -1; }).map(function (x) { return x.name; });
-      live.appendChild(el('p', { 'data-rt-level': String(r.badges.level), text: 'Level ' + r.badges.level + ' \u00b7 ' + r.badges.xp + ' XP' + (names.length ? ' \u00b7 Badges: ' + names.join(', ') : '') }));
-    } else if (cfg.milestoneList && cfg.milestoneList.length) {
-      live.appendChild(el('p', { class: 'rt-muted', 'data-rt-milestones': '1', text: 'Milestones: ' + cfg.milestoneList.join(' \u00b7 ') }));
-    }
-
-    var w = weekly(r, now);
-    var recap = el('div', { 'data-rt-weekly': '1' }, [el('h3', { text: 'This week' })]);
-    if (!w.active && r.history.length) recap.appendChild(el('p', { class: 'rt-muted', text: 'Nothing yet this week. A fresh start is one ' + lesson + ' away.' }));
+    if (cfg.badges) container.appendChild(el('p', { class: 'rt-fc', 'data-rt-level': String(r.badges.level), text: 'Level ' + r.badges.level + ' with ' + r.badges.xp + ' XP.' }));
+    else if (cfg.milestoneList && cfg.milestoneList.length) container.appendChild(el('p', { class: 'rt-fc', 'data-rt-milestones': '1', text: 'Milestones reached: ' + cfg.milestoneList.join(', ') + '.' }));
+    var wk = weekly(r, now);
+    var recap = el('div', { 'data-rt-weekly': '1', class: 'rt-sec' }, [el('h3', { class: 'rt-sec-h', text: 'This week' })]);
+    if (!wk.active && r.history.length) recap.appendChild(el('p', { class: 'rt-fc', style: 'margin:0', text: 'Nothing yet this week. A fresh start is one ' + m.w.lesson + ' away.' }));
     else {
-      var bits = [w.lessons + ' ' + (w.lessons === 1 ? lesson : lessons)];
-      if (cfg.quizGoal !== false) bits.push(w.quizzes + ' ' + (w.quizzes === 1 ? quiz : quizzes));
-      bits.push('streak ' + s.current);
-      if (w.freezesUsed) bits.push(w.freezesUsed + ' freeze' + (w.freezesUsed === 1 ? '' : 's') + ' used');
-      if (cfg.badges && w.badges.length) bits.push(w.badges.length + ' badge' + (w.badges.length === 1 ? '' : 's') + ' earned');
-      recap.appendChild(el('p', { text: bits.join(' \u00b7 ') + '.' }));
+      var bits = [plural(wk.lessons, m.w.lesson, m.w.lessons)];
+      if (cfg.quizGoal !== false) bits.push(plural(wk.quizzes, m.w.quiz, m.w.quizzes));
+      var line = cap(bits.join(' and ')) + ' so far.';
+      if (wk.freezesUsed) line += ' ' + plural(wk.freezesUsed, 'freeze', 'freezes') + ' used.';
+      if (cfg.badges && wk.badges.length) line += ' ' + plural(wk.badges.length, 'badge', 'badges') + ' earned.';
+      recap.appendChild(el('p', { class: 'rt-fc', style: 'margin:0', text: line }));
     }
     container.appendChild(recap);
-
-    if (cfg.diaryHref) container.appendChild(el('p', {}, [el('a', { href: cfg.diaryHref, 'data-rt-diary-link': '1', text: 'Diary: everything you\u2019ve completed' })]));
-    container.appendChild(settingsBlock(cfg, function () { renderHome(container, cfg); }));
+    if (cfg.diaryHref) container.appendChild(el('p', { class: 'rt-fc' }, [el('a', { class: 'rt-link', href: cfg.diaryHref, 'data-rt-diary-link': '1', text: 'Open your diary' })]));
+    container.appendChild(settingsBlock(cfg, function () { renderHome(container, cfg); var d = container.querySelector('details.rt-settings'); if (d) d.open = true; }));
   }
 
   function settingsBlock(cfg, rerender) {
@@ -865,33 +851,40 @@
    */
   function renderMarkComplete(container, cfg) {
     if (!container) return;
-    injectStyles();
+    injectChromeStyles(cfg.theme);
     var r = cfg.get();
     container.innerHTML = '';
-    container.classList.add('rt-complete');
+    container.classList.add('rt-complete', 'rt-ui', 'rt-done-card');
     var c = r.completions[cfg.unit.id];
-    var status = el('p', { 'aria-live': 'polite', 'data-rt-status': c ? 'done' : 'open' });
-    if (c) {
-      status.appendChild(el('span', { class: 'rt-done', text: 'Completed' }));
-      status.appendChild(agoBadge(c.completedAt));
-      var again = el('button', { type: 'button', class: 'rt-btn', 'data-rt-mark-again': '1', text: 'Mark complete again' });
-      again.addEventListener('click', function () { var x = cfg.get(); var res = complete(x, cfg.unit, { source: 'button' }); cfg.save(x); if (cfg.onComplete) cfg.onComplete(res); renderMarkComplete(container, cfg); if (chrome) chrome.refresh(); });
-      container.appendChild(status);
-      container.appendChild(el('p', { class: 'rt-muted', text: 'Reviewing it again counts toward today\u2019s pace.' }));
-      container.appendChild(again);
-      return;
-    }
-    var btn = el('button', { type: 'button', class: 'rt-btn rt-btn--primary', 'data-rt-mark-complete': cfg.unit.id, text: cfg.label || 'Mark complete' });
-    btn.addEventListener('click', function () {
+    var noun = (cfg.noun || (cfg.label || 'Mark complete').replace(/^Mark\s+/i, '').replace(/\s*complete$/i, '') || 'item').toLowerCase();
+    if (noun === 'mark' || noun === '') noun = 'item';
+    var status = el('p', { class: 'rt-dc-sub', 'aria-live': 'polite', 'data-rt-status': c ? 'done' : 'open' });
+    function finish(btn) {
       var x = cfg.get();
       var res = complete(x, cfg.unit, { source: 'button' });
       cfg.save(x);
       if (cfg.onComplete) cfg.onComplete(res);
       renderMarkComplete(container, cfg);
+      var again = container.querySelector('[data-rt-mark-again]'); if (again && btn === doc.activeElement) again.focus();
       if (chrome) chrome.refresh();
-    });
-    container.appendChild(btn);
-    container.appendChild(status);
+    }
+    if (c) {
+      container.setAttribute('data-rt-state', 'done');
+      var head = el('div', { class: 'rt-dc-head' }, [el('span', { class: 'rt-dc-ic rt-dc-ic--done', 'aria-hidden': 'true' }, [icon('check')]), el('div', {}, [el('p', { class: 'rt-dc-title' }, [el('span', { class: 'rt-done', text: 'Completed' }), agoBadge(c.completedAt)]), status])]);
+      status.appendChild(doc.createTextNode('Reviewing it again counts toward today\u2019s pace.'));
+      var again = el('button', { type: 'button', class: 'rt-ghost', 'data-rt-mark-again': '1' }, [icon('check'), 'Mark complete again']);
+      again.addEventListener('click', function () { finish(again); });
+      container.appendChild(head);
+      container.appendChild(el('div', { class: 'rt-dc-act' }, [again]));
+      return;
+    }
+    container.setAttribute('data-rt-state', 'open');
+    status.appendChild(doc.createTextNode('Mark it complete to count it toward today\u2019s pace and your streak. Opening or scrolling never counts.'));
+    var head2 = el('div', { class: 'rt-dc-head' }, [el('span', { class: 'rt-dc-ic', 'aria-hidden': 'true' }, [icon('check')]), el('div', {}, [el('p', { class: 'rt-dc-title', text: 'Finished this ' + noun + '?' }), status])]);
+    var btn = el('button', { type: 'button', class: 'rt-cta', 'data-rt-mark-complete': cfg.unit.id }, [icon('check'), el('span', { text: cfg.label || 'Mark complete' })]);
+    btn.addEventListener('click', function () { finish(btn); });
+    container.appendChild(head2);
+    container.appendChild(el('div', { class: 'rt-dc-act' }, [btn]));
   }
 
   /**
@@ -902,7 +895,8 @@
     injectStyles();
     var r = cfg.get();
     container.innerHTML = '';
-    container.classList.add('rt-diary');
+    injectChromeStyles(cfg.theme);
+    container.classList.add('rt-diary', 'rt-ui');
     var cats = diaryCategories(r);
     var sel = el('select', { id: 'rt-diary-filter' }, [el('option', { value: '', text: 'All categories' })].concat(cats.map(function (k) { return el('option', { value: k, text: k }); })));
     var head = el('div', { class: 'rt-row' }, [el('label', { for: 'rt-diary-filter', text: 'Filter by category' }), sel]);
@@ -914,7 +908,7 @@
       var groups = diary(r, sel.value);
       if (!groups.length) { list.appendChild(el('p', { class: 'rt-muted', text: cfg.emptyText || 'Nothing completed yet. Use Mark complete at the end of a lesson.' })); return; }
       groups.forEach(function (g) {
-        list.appendChild(el('h3', { class: 'rt-diary-day', text: fullDate(g.day + 'T12:00:00') }));
+        list.appendChild(el('h3', { class: 'rt-diary-day' }, [fullDate(g.day + 'T12:00:00'), el('span', { text: plural(g.rows.length, 'completion', 'completions') })]));
         var ul = el('ul');
         g.rows.forEach(function (h) {
           var href = cfg.hrefFor ? cfg.hrefFor(h.unitId, h) : null;
@@ -931,64 +925,334 @@
     draw();
   }
 
-  // ---------------------------------------------------------------- corner buttons, progress panel, welcome popover
-  var CHROME_CSS = [
-    '.rt-corner{position:fixed;z-index:9990;display:flex;flex-direction:column;gap:8px;align-items:stretch;bottom:max(16px,env(safe-area-inset-bottom))}',
-    '.rt-corner--bottom-right{right:max(16px,env(safe-area-inset-right))}',
-    '.rt-corner--bottom-left{left:max(16px,env(safe-area-inset-left))}',
-    '.rt-corner-btn{font:inherit;font-size:14px;min-width:44px;min-height:44px;padding:.4rem .75rem;border:1px solid var(--rt-edge,#888);border-radius:var(--rt-radius,999px);background:var(--rt-corner-bg,#fff);color:var(--rt-corner-fg,#1c222b);box-shadow:0 1px 6px rgba(0,0,0,.18);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.35rem;text-decoration:none;line-height:1.2}',
-    '.rt-corner-btn:focus-visible,.rt-pop button:focus-visible,.rt-pop a:focus-visible{outline:3px solid var(--rt-accent,#2f6fa7);outline-offset:2px}',
-    '.rt-sheet{position:fixed;z-index:9991;width:min(380px,calc(100vw - 32px));max-height:calc(100vh - 150px);overflow:auto;background:var(--rt-corner-bg,#fff);color:var(--rt-corner-fg,#1c222b);border:1px solid var(--rt-edge,#888);border-radius:var(--rt-radius,8px);box-shadow:0 4px 18px rgba(0,0,0,.22);padding:.25rem .9rem .9rem}',
-    '.rt-sheet .rt-panel{border:0;margin:0;padding:.4rem 0}',
-    '.rt-sheet-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem}',
-    '.rt-x{font:inherit;min-width:44px;min-height:44px;border:0;background:transparent;color:inherit;cursor:pointer;font-size:1.3rem}',
-    '.rt-strip{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin:.4rem 0;max-width:280px}',
-    '.rt-cell{display:block;aspect-ratio:1;min-width:14px;border-radius:3px;border:1px solid var(--rt-edge,#999);box-sizing:border-box}',
-    '.rt-cell--active{background:var(--rt-accent,#2f6fa7);border-color:var(--rt-accent,#2f6fa7)}',
-    '.rt-cell--frozen{background:repeating-linear-gradient(45deg,transparent 0 3px,var(--rt-edge,#999) 3px 4px)}',
-    '.rt-cell--missed{background:transparent;opacity:.55}',
-    '.rt-cell--today{border-style:dashed;border-width:2px}',
-    '.rt-legend{display:flex;flex-wrap:wrap;gap:.7rem;font-size:.8em;opacity:.85;margin:.2rem 0 .6rem}',
-    '.rt-legend span{display:inline-flex;align-items:center;gap:.3rem}',
-    '.rt-legend .rt-cell{width:12px;min-width:12px;height:12px}',
-    '.rt-backdrop{position:fixed;inset:0;z-index:9995;background:rgba(10,14,20,.45);display:flex;align-items:center;justify-content:center;padding:16px}',
-    '.rt-pop{position:relative;width:min(440px,100%);max-height:calc(100vh - 32px);overflow:auto;background:var(--rt-corner-bg,#fff);color:var(--rt-corner-fg,#1c222b);border:1px solid var(--rt-edge,#888);border-radius:var(--rt-radius,10px);box-shadow:0 8px 30px rgba(0,0,0,.3);padding:1rem 1.1rem}',
-    '.rt-pop h2{margin:.1rem 2.5rem .6rem 0;font-size:1.15rem}',
-    '.rt-pop p{margin:.35rem 0}',
-    '.rt-pop .rt-x{position:absolute;top:.25rem;right:.25rem}',
-    '.rt-pop label{display:inline-flex;gap:.4rem;align-items:center;min-height:44px}',
-    '@media (prefers-reduced-motion:no-preference){.rt-pop{animation:rt-in .16s ease-out}.rt-sheet{animation:rt-in .12s ease-out}@keyframes rt-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}'
-  ].join('\n');
-  function injectChromeStyles() {
-    injectStyles();
-    if (!doc || doc.getElementById('rt-chrome-style')) return;
-    var s = el('style', { id: 'rt-chrome-style' });
-    s.textContent = CHROME_CSS;
+  // ---------------------------------------------------------------- welcome popover, corner buttons, progress panel
+  var ICONS = {
+    flame: '<path d="M12 3.2c.6 3.3 4.6 5.4 4.6 10a4.6 4.6 0 0 1-9.2 0c0-2.1 1-3.5 2.3-4.8.2 1.6 1 2.7 2.4 3.2-.7-2.9-.9-5.7-.1-8.4z"/>',
+    snow: '<path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9M9.5 4.5 12 6.5l2.5-2M9.5 19.5 12 17.5l2.5 2"/>',
+    book: '<path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v14.5H7.5A2.5 2.5 0 0 0 5 20z"/><path d="M5 20a1.5 1.5 0 0 0 1.5 1H19M9 7.5h6"/>',
+    x: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+    check: '<path d="M5 12.5l4.3 4.3L19 7.3"/>',
+    arrow: '<path d="M5 12h13.5M13 6.5 18.5 12 13 17.5"/>',
+    target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/>',
+    lock: '<rect x="5.5" y="10.5" width="13" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'
+  };
+  function icon(name, cls) {
+    var s = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('width', '20'); s.setAttribute('height', '20');
+    s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '1.8');
+    s.setAttribute('stroke-linecap', 'round'); s.setAttribute('stroke-linejoin', 'round');
+    s.setAttribute('aria-hidden', 'true'); s.setAttribute('focusable', 'false');
+    s.setAttribute('class', 'rt-i' + (cls ? ' ' + cls : ''));
+    s.innerHTML = ICONS[name] || '';
+    return s;
+  }
+
+  // Theme: each app maps its own tokens (cfg.theme); anything missing is read from the page.
+  function parseRgb(c) { var m = /rgba?\(([^)]+)\)/.exec(c || ''); if (!m) return null; var p = m[1].split(',').map(parseFloat); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; }
+  function lum(c) { var f = function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); }
+  function mix(a, b, t) { return 'rgb(' + Math.round(a.r + (b.r - a.r) * t) + ',' + Math.round(a.g + (b.g - a.g) * t) + ',' + Math.round(a.b + (b.b - a.b) * t) + ')'; }
+  function autoTheme() {
+    var t = {};
+    if (!global.getComputedStyle) return t;
+    var bg = null, n = doc.body;
+    while (n && n.nodeType === 1) { var c = parseRgb(global.getComputedStyle(n).backgroundColor); if (c && c.a > 0.5) { bg = c; break; } n = n.parentNode; }
+    if (!bg) bg = { r: 250, g: 249, b: 246 };
+    var cs = global.getComputedStyle(doc.body);
+    var fg = parseRgb(cs.color) || { r: 28, g: 32, b: 38 };
+    var dark = lum(bg) < 0.25;
+    var a = doc.querySelector('main a[href], a[href]');
+    var acc = a ? parseRgb(global.getComputedStyle(a).color) : null;
+    if (!acc || Math.abs(lum(acc) - lum(fg)) < 0.02) acc = dark ? { r: 110, g: 168, b: 220 } : { r: 38, g: 96, b: 150 };
+    t.surface = dark ? mix(bg, { r: 255, g: 255, b: 255 }, 0.06) : mix(bg, { r: 255, g: 255, b: 255 }, 0.7);
+    t.ink = mix(fg, fg, 0); t.heading = mix(fg, dark ? { r: 255, g: 255, b: 255 } : { r: 0, g: 0, b: 0 }, 0.35);
+    t.muted = mix(fg, bg, 0.36); t.line = mix(fg, bg, 0.82);
+    t.accent = mix(acc, acc, 0); t.accentInk = lum(acc) > 0.35 ? mix(bg, { r: 0, g: 0, b: 0 }, dark ? 0.2 : 0.85) : 'rgb(255,255,255)';
+    t.accentSoft = mix(bg, acc, dark ? 0.16 : 0.1);
+    t.font = cs.fontFamily; t.dark = dark;
+    return t;
+  }
+  var THEME_KEYS = { surface: '--rt-surface', ink: '--rt-ink', heading: '--rt-heading', muted: '--rt-muted', line: '--rt-line', accent: '--rt-accent', accentInk: '--rt-accent-ink', accentSoft: '--rt-accent-soft', radius: '--rt-radius', font: '--rt-font', warm: '--rt-warm' };
+  function applyTheme(theme) {
+    var auto = autoTheme(), t = {};
+    Object.keys(auto).forEach(function (k) { t[k] = auto[k]; });
+    Object.keys(theme || {}).forEach(function (k) { if (theme[k]) t[k] = theme[k]; });
+    if (!t.warm) t.warm = auto.dark ? '#e7a35a' : '#b5651d';
+    var decl = Object.keys(THEME_KEYS).filter(function (k) { return t[k] && k !== 'dark'; }).map(function (k) { return THEME_KEYS[k] + ':' + t[k]; }).join(';');
+    var s = doc.getElementById('rt-theme') || el('style', { id: 'rt-theme' });
+    s.textContent = '.rt-ui{' + decl + ';--rt-shadow:' + (auto.dark ? '0 18px 48px -12px rgba(0,0,0,.65),0 2px 6px rgba(0,0,0,.35)' : '0 18px 44px -14px rgba(24,32,44,.32),0 2px 6px rgba(24,32,44,.08)') + '}';
     (doc.head || doc.documentElement).appendChild(s);
   }
 
-  /** 30-day activity strip with a legend and per-day text (no red, no guilt copy). */
-  function renderStrip(r, now) {
-    var days = activity(r, now, 30);
-    var wrap = el('div', { 'data-rt-strip': '1' });
-    wrap.appendChild(el('h3', { text: 'Last 30 days' }));
-    var grid = el('ul', { class: 'rt-strip', role: 'list', 'aria-label': 'Activity over the last 30 days', style: 'list-style:none;padding:0' });
-    days.forEach(function (d) {
-      var when = fullDate(d.day + 'T12:00:00');
-      var txt = d.state === 'active' ? when + ': ' + d.count + ' completed' : d.state === 'frozen' ? when + ': freeze used' : d.state === 'today' ? when + ' (today): nothing yet' : when + ': no activity';
-      grid.appendChild(el('li', { class: 'rt-cell rt-cell--' + d.state, 'data-rt-day': d.day, 'data-rt-state': d.state, title: txt, 'aria-label': txt }));
-    });
-    wrap.appendChild(grid);
-    var lg = el('p', { class: 'rt-legend' });
-    [['active', 'Active'], ['frozen', 'Freeze'], ['missed', 'Rest day'], ['today', 'Today']].forEach(function (x) {
-      lg.appendChild(el('span', {}, [el('i', { class: 'rt-cell rt-cell--' + x[0], 'aria-hidden': 'true' }), x[1]]));
-    });
-    wrap.appendChild(lg);
-    var act = days.filter(function (d) { return d.state === 'active'; }).length;
-    wrap.appendChild(el('p', { class: 'rt-muted', text: act + ' active ' + (act === 1 ? 'day' : 'days') + ' in the last 30.' }));
-    return wrap;
+  var CHROME_CSS = [
+    '.rt-ui{font-family:var(--rt-font,inherit);color:var(--rt-ink);-webkit-font-smoothing:antialiased;line-height:1.45;font-size:15px;text-align:left}',
+    '.rt-ui *{box-sizing:border-box}',
+    '.rt-ui .rt-i{display:block;flex:none}',
+    '.rt-ui :focus-visible{outline:2px solid var(--rt-accent);outline-offset:2px}',
+    '.rt-ui ::selection{background:var(--rt-accent-soft)}',
+    // corner
+    '.rt-ui .rt-corner,.rt-corner.rt-ui{position:fixed;z-index:9990;display:flex;flex-direction:column;gap:10px;bottom:max(18px,env(safe-area-inset-bottom))}',
+    '.rt-ui .rt-corner--bottom-right,.rt-corner--bottom-right.rt-ui{right:max(18px,env(safe-area-inset-right));align-items:flex-end}',
+    '.rt-ui .rt-corner--bottom-left,.rt-corner--bottom-left.rt-ui{left:max(18px,env(safe-area-inset-left));align-items:flex-start}',
+    '.rt-ui .rt-cbtn,.rt-cbtn.rt-ui{font:600 15px/1 var(--rt-font,inherit);color:var(--rt-heading);background:var(--rt-surface);border:1px solid var(--rt-line);box-shadow:var(--rt-shadow);height:46px;min-width:46px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 16px 0 13px;cursor:pointer;text-decoration:none;transition:transform .18s cubic-bezier(.16,1,.3,1),border-color .18s}',
+    '.rt-ui .rt-cbtn:hover,.rt-cbtn.rt-ui:hover{border-color:var(--rt-accent);transform:translateY(-1px)}',
+    '.rt-ui .rt-cbtn:active,.rt-cbtn.rt-ui:active{transform:translateY(0)}',
+    '.rt-ui .rt-cbtn--icon,.rt-cbtn--icon.rt-ui{padding:0;width:46px}',
+    '.rt-ui .rt-cbtn .rt-flame,.rt-cbtn.rt-ui .rt-flame{color:var(--rt-warm)}',
+    '.rt-ui .rt-cbtn[data-rt-cold] .rt-flame,.rt-cbtn.rt-ui[data-rt-cold] .rt-flame{color:var(--rt-muted)}',
+    '.rt-ui .rt-cbtn .rt-num,.rt-cbtn.rt-ui .rt-num{font-variant-numeric:tabular-nums;font-size:16px;letter-spacing:-.01em}',
+    '.rt-ui .rt-cbtn .rt-cap,.rt-cbtn.rt-ui .rt-cap{font-weight:500;color:var(--rt-muted);font-size:13px}',
+    '.rt-ui .rt-cbtn[aria-expanded=true],.rt-cbtn.rt-ui[aria-expanded=true]{border-color:var(--rt-accent)}',
+    '.rt-ui .rt-tip,.rt-tip.rt-ui{position:relative}',
+    '.rt-ui .rt-tip[data-tip]:hover::after,.rt-tip.rt-ui[data-tip]:hover::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);white-space:nowrap;background:var(--rt-heading);color:var(--rt-surface);font:500 12px/1 var(--rt-font,inherit);padding:7px 9px;border-radius:6px;pointer-events:none}',
+    '.rt-ui .rt-corner--bottom-right .rt-tip[data-tip]:hover::after,.rt-corner--bottom-right.rt-ui .rt-tip[data-tip]:hover::after{right:0}.rt-corner--bottom-left .rt-tip[data-tip]:hover::after{left:0}',
+    // shared card bits
+    '.rt-ui .rt-card,.rt-card.rt-ui{background:var(--rt-surface);border:1px solid var(--rt-line);border-radius:calc(var(--rt-radius,10px) + 6px);box-shadow:var(--rt-shadow)}',
+    '.rt-ui .rt-x,.rt-x.rt-ui{position:absolute;top:12px;right:12px;width:40px;height:40px;border-radius:999px;border:0;background:transparent;color:var(--rt-muted);display:grid;place-items:center;cursor:pointer}',
+    '.rt-ui .rt-x:hover,.rt-x.rt-ui:hover{background:var(--rt-accent-soft);color:var(--rt-heading)}',
+    '.rt-ui .rt-h,.rt-h.rt-ui{margin:0;padding-right:44px;font:650 22px/1.2 var(--rt-font,inherit);letter-spacing:-.015em;color:var(--rt-heading);text-wrap:balance}',
+    '.rt-ui .rt-sub,.rt-sub.rt-ui{margin:6px 0 0;color:var(--rt-muted);font-size:14.5px;text-wrap:pretty}',
+    '.rt-ui .rt-stats,.rt-stats.rt-ui{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px}',
+    '.rt-ui .rt-stat,.rt-stat.rt-ui{border:1px solid var(--rt-line);border-radius:var(--rt-radius,10px);padding:14px 14px 13px;min-width:0}',
+    '.rt-ui .rt-stat-k,.rt-stat-k.rt-ui{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--rt-muted);margin:0}',
+    '.rt-ui .rt-big,.rt-big.rt-ui{display:flex;align-items:baseline;gap:6px;margin:8px 0 10px;color:var(--rt-heading)}',
+    '.rt-ui .rt-big b,.rt-big.rt-ui b{font-size:36px;line-height:1;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}',
+    '.rt-ui .rt-big span,.rt-big.rt-ui span{font-size:14px;color:var(--rt-muted);font-weight:500}',
+    '.rt-ui .rt-meter,.rt-meter.rt-ui{margin-top:8px}',
+    '.rt-ui .rt-meter-row,.rt-meter-row.rt-ui{display:flex;justify-content:space-between;font-size:12.5px;color:var(--rt-muted);margin-bottom:5px;gap:8px}',
+    '.rt-ui .rt-meter-row b,.rt-meter-row.rt-ui b{color:var(--rt-ink);font-weight:600;font-variant-numeric:tabular-nums}',
+    '.rt-ui .rt-bar,.rt-bar.rt-ui{display:flex;gap:3px;height:6px}',
+    '.rt-ui .rt-bar i,.rt-bar.rt-ui i{flex:1;border-radius:999px;background:var(--rt-line)}',
+    '.rt-ui .rt-bar i.on,.rt-bar.rt-ui i.on{background:var(--rt-accent)}',
+    '.rt-ui .rt-bar--fill,.rt-bar--fill.rt-ui{display:block;border-radius:999px;background:var(--rt-line);overflow:hidden}',
+    '.rt-ui .rt-bar--fill i,.rt-bar--fill.rt-ui i{display:block;height:100%;background:var(--rt-accent);border-radius:999px}',
+    '.rt-ui .rt-flame,.rt-flame.rt-ui{color:var(--rt-warm)}',
+    '.rt-ui .rt-freeze,.rt-freeze.rt-ui{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--rt-muted);margin:0}',
+    '.rt-ui .rt-freeze .rt-i,.rt-freeze.rt-ui .rt-i{width:15px;height:15px}',
+    '.rt-ui .rt-freeze[data-banked],.rt-freeze.rt-ui[data-banked]{color:var(--rt-ink)}',
+    '.rt-ui .rt-week,.rt-week.rt-ui{display:flex;gap:5px;margin-top:10px}',
+    '.rt-ui .rt-dot,.rt-dot.rt-ui{width:10px;height:10px;border-radius:999px;border:1.5px solid var(--rt-line);flex:none;list-style:none}',
+    '.rt-ui .rt-dot--active,.rt-dot--active.rt-ui{background:var(--rt-accent);border-color:var(--rt-accent)}',
+    '.rt-ui .rt-dot--frozen,.rt-dot--frozen.rt-ui{border-color:var(--rt-muted);background:repeating-linear-gradient(135deg,var(--rt-muted) 0 1.5px,transparent 1.5px 3.5px)}',
+    '.rt-ui .rt-dot--today,.rt-dot--today.rt-ui{border-color:var(--rt-accent);border-style:dashed}',
+    '.rt-ui .rt-ms,.rt-ms.rt-ui{margin-top:12px;padding:14px;border-radius:var(--rt-radius,10px);background:var(--rt-accent-soft);display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:center}',
+    '.rt-ui .rt-ms .rt-i,.rt-ms.rt-ui .rt-i{grid-row:span 2;color:var(--rt-accent);width:22px;height:22px}',
+    '.rt-ui .rt-ms-name,.rt-ms-name.rt-ui{font-weight:600;color:var(--rt-heading);font-size:14.5px;display:flex;justify-content:space-between;gap:8px}',
+    '.rt-ui .rt-ms-name span,.rt-ms-name.rt-ui span{font-weight:500;color:var(--rt-muted);font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}',
+    '.rt-ui .rt-ms .rt-bar--fill,.rt-ms.rt-ui .rt-bar--fill{height:5px;background:color-mix(in srgb,var(--rt-accent) 18%,transparent)}',
+    '.rt-ui .rt-fc,.rt-fc.rt-ui{margin:14px 0 0;font-size:13.5px;color:var(--rt-muted);text-wrap:pretty}',
+    '.rt-ui .rt-actions,.rt-actions.rt-ui{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}',
+    '.rt-ui .rt-cta,.rt-cta.rt-ui{flex:1 1 auto;min-height:46px;border-radius:var(--rt-radius,10px);border:1px solid var(--rt-accent);background:var(--rt-accent);color:var(--rt-accent-ink);font:600 15px/1.2 var(--rt-font,inherit);display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;text-decoration:none;cursor:pointer;transition:filter .15s,transform .15s cubic-bezier(.16,1,.3,1)}',
+    '.rt-ui .rt-cta:hover,.rt-cta.rt-ui:hover{filter:brightness(1.08);transform:translateY(-1px)}',
+    '.rt-ui .rt-cta span,.rt-cta.rt-ui span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:24ch}',
+    '.rt-ui .rt-ghost,.rt-ghost.rt-ui{min-height:46px;border-radius:var(--rt-radius,10px);border:1px solid var(--rt-line);background:transparent;color:var(--rt-heading);font:600 15px/1.2 var(--rt-font,inherit);display:inline-flex;align-items:center;gap:8px;padding:10px 16px;text-decoration:none;cursor:pointer}',
+    '.rt-ui .rt-ghost:hover,.rt-ghost.rt-ui:hover{border-color:var(--rt-accent);background:var(--rt-accent-soft)}',
+    '.rt-ui .rt-foot,.rt-foot.rt-ui{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--rt-line)}',
+    '.rt-ui .rt-switch,.rt-switch.rt-ui{display:flex;align-items:center;gap:12px;cursor:pointer;font-size:13.5px;color:var(--rt-muted);min-height:44px}',
+    '.rt-ui .rt-switch input,.rt-switch.rt-ui input{position:absolute;opacity:0;width:1px;height:1px}',
+    '.rt-ui .rt-switch .rt-track,.rt-switch.rt-ui .rt-track{position:relative;width:38px;height:22px;border-radius:999px;background:var(--rt-line);flex:none;transition:background .2s}',
+    '.rt-ui .rt-switch .rt-track::after,.rt-switch.rt-ui .rt-track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:999px;background:var(--rt-surface);box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s cubic-bezier(.16,1,.3,1)}',
+    '.rt-ui .rt-switch input:checked+.rt-track,.rt-switch.rt-ui input:checked+.rt-track{background:var(--rt-accent)}',
+    '.rt-ui .rt-switch input:checked+.rt-track::after,.rt-switch.rt-ui input:checked+.rt-track::after{transform:translateX(16px)}',
+    '.rt-ui .rt-switch input:focus-visible+.rt-track,.rt-switch.rt-ui input:focus-visible+.rt-track{outline:2px solid var(--rt-accent);outline-offset:2px}',
+    // popover
+    '.rt-ui .rt-backdrop,.rt-backdrop.rt-ui{position:fixed;inset:0;z-index:9995;background:rgba(8,12,18,.5);display:flex;align-items:center;justify-content:center;padding:20px}',
+    '.rt-ui .rt-pop:focus,.rt-pop.rt-ui:focus{outline:none}',
+    '.rt-ui .rt-pop,.rt-pop.rt-ui{position:relative;width:min(468px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:26px 26px 18px}',
+    // sheet
+    '.rt-ui .rt-sheet,.rt-sheet.rt-ui{position:fixed;z-index:9991;width:min(392px,calc(100vw - 36px));max-height:calc(100vh - 140px);overflow:auto;padding:22px 20px 16px}',
+    '.rt-ui .rt-sheet .rt-h,.rt-sheet.rt-ui .rt-h{font-size:19px}',
+    '.rt-ui .rt-sec,.rt-sec.rt-ui{margin-top:22px}',
+    '.rt-ui .rt-sec-h,.rt-sec-h.rt-ui{margin:0 0 10px;font:650 14px/1.3 var(--rt-font,inherit);color:var(--rt-heading);display:flex;justify-content:space-between;gap:8px;align-items:baseline}',
+    '.rt-ui .rt-sec-h span,.rt-sec-h.rt-ui span{font-weight:500;color:var(--rt-muted);font-size:12.5px}',
+    '.rt-ui .rt-cal,.rt-cal.rt-ui{display:grid;grid-template-columns:repeat(15,1fr);gap:6px;padding:0;margin:0}',
+    '.rt-ui .rt-cal .rt-dot,.rt-cal.rt-ui .rt-dot{width:100%;height:auto;aspect-ratio:1}',
+    '.rt-ui .rt-legend,.rt-legend.rt-ui{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0;font-size:12px;color:var(--rt-muted)}',
+    '.rt-ui .rt-legend span,.rt-legend.rt-ui span{display:inline-flex;align-items:center;gap:6px}',
+    '.rt-ui .rt-badges,.rt-badges.rt-ui{list-style:none;margin:0;padding:0;display:grid;gap:8px}',
+    '.rt-ui .rt-badges li,.rt-badges.rt-ui li{display:flex;align-items:center;gap:10px;font-size:14px}',
+    '.rt-ui .rt-badges li .rt-i,.rt-badges.rt-ui li .rt-i{width:18px;height:18px}',
+    '.rt-ui .rt-badges li[data-earned] .rt-i,.rt-badges.rt-ui li[data-earned] .rt-i{color:var(--rt-accent)}',
+    '.rt-ui .rt-badges li:not([data-earned]),.rt-badges.rt-ui li:not([data-earned]){color:var(--rt-muted)}',
+    '.rt-ui .rt-list,.rt-list.rt-ui{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:13.5px;color:var(--rt-muted)}',
+    '.rt-ui .rt-list b,.rt-list.rt-ui b{color:var(--rt-ink);font-weight:600}',
+    '.rt-ui .rt-link,.rt-link.rt-ui{color:var(--rt-accent);font-weight:600;text-decoration:underline;text-underline-offset:3px}',
+    '.rt-ui .rt-note,.rt-note.rt-ui{margin:0;font-size:13.5px;color:var(--rt-ink);padding:10px 12px;border-radius:var(--rt-radius,10px);border:1px dashed var(--rt-line)}',
+    '.rt-ui .rt-home,.rt-home.rt-ui{margin:1.25rem 0;padding:24px;background:var(--rt-surface);border:1px solid var(--rt-line);border-radius:calc(var(--rt-radius,10px) + 6px)}',
+    '.rt-ui .rt-home .rt-stats,.rt-home.rt-ui .rt-stats{max-width:560px}',
+    '.rt-ui .rt-home .rt-ms,.rt-home.rt-ui .rt-ms{max-width:560px}',
+    '.rt-ui .rt-home details,.rt-home.rt-ui details,.rt-ui .rt-sheet details,.rt-sheet.rt-ui details{margin-top:18px;border-top:1px solid var(--rt-line);padding-top:6px}',
+    '.rt-ui .rt-home summary,.rt-home.rt-ui summary,.rt-ui .rt-sheet summary,.rt-sheet.rt-ui summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600;color:var(--rt-heading);font-size:14px}',
+    '.rt-ui .rt-home .rt-settings .rt-row,.rt-home.rt-ui .rt-settings .rt-row,.rt-ui .rt-sheet .rt-settings .rt-row,.rt-sheet.rt-ui .rt-settings .rt-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:8px 0}',
+    '.rt-ui .rt-home .rt-settings label,.rt-home.rt-ui .rt-settings label,.rt-ui .rt-sheet .rt-settings label,.rt-sheet.rt-ui .rt-settings label{display:inline-flex;gap:8px;align-items:center;font-size:13.5px;color:var(--rt-ink)}',
+    '.rt-ui .rt-home .rt-settings input,.rt-home.rt-ui .rt-settings input,.rt-ui .rt-sheet .rt-settings input,.rt-sheet.rt-ui .rt-settings input{font:inherit;color:var(--rt-ink);background:transparent;border:1px solid var(--rt-line);border-radius:8px;min-height:40px;padding:0 10px;width:4.5rem}',
+    '.rt-ui .rt-home .rt-settings input[type=time],.rt-home.rt-ui .rt-settings input[type=time],.rt-ui .rt-sheet .rt-settings input[type=time],.rt-sheet.rt-ui .rt-settings input[type=time]{width:auto}',
+    '.rt-ui .rt-home .rt-settings .rt-btn,.rt-home.rt-ui .rt-settings .rt-btn,.rt-ui .rt-sheet .rt-settings .rt-btn,.rt-sheet.rt-ui .rt-settings .rt-btn{min-height:40px;border:1px solid var(--rt-line);border-radius:8px;background:transparent;color:var(--rt-heading);font:600 13.5px var(--rt-font,inherit);padding:0 12px;cursor:pointer}',
+    '.rt-ui .rt-home .rt-settings .rt-btn:hover,.rt-home.rt-ui .rt-settings .rt-btn:hover,.rt-ui .rt-sheet .rt-settings .rt-btn:hover,.rt-sheet.rt-ui .rt-settings .rt-btn:hover{border-color:var(--rt-accent)}',
+    '.rt-ui .rt-home .rt-muted,.rt-home.rt-ui .rt-muted,.rt-ui .rt-sheet .rt-muted,.rt-sheet.rt-ui .rt-muted{font-size:12.5px;color:var(--rt-muted);opacity:1;margin:6px 0}',
+    '.rt-ui .rt-done-card,.rt-done-card.rt-ui{margin:28px 0;padding:20px;background:var(--rt-surface);border:1px solid var(--rt-line);border-radius:calc(var(--rt-radius,10px) + 4px);display:flex;flex-wrap:wrap;gap:16px 20px;align-items:center;justify-content:space-between}',
+    '.rt-done-card.rt-ui[data-rt-state=done]{border-color:color-mix(in srgb,var(--rt-accent) 45%,var(--rt-line))}',
+    '.rt-done-card .rt-dc-head{display:flex;gap:14px;align-items:flex-start;flex:1 1 300px;min-width:0}',
+    '.rt-done-card .rt-dc-ic{width:38px;height:38px;border-radius:999px;border:1.5px solid var(--rt-line);color:var(--rt-muted);display:grid;place-items:center;flex:none}',
+    '.rt-done-card .rt-dc-ic--done{background:var(--rt-accent);border-color:var(--rt-accent);color:var(--rt-accent-ink)}',
+    '.rt-done-card .rt-dc-title{margin:2px 0 0;font:650 16px/1.3 var(--rt-font,inherit);color:var(--rt-heading);display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+    '.rt-done-card .rt-dc-title .rt-done{font-weight:650}',
+    '.rt-done-card .rt-dc-sub{margin:4px 0 0;font-size:13.5px;color:var(--rt-muted);text-wrap:pretty;max-width:52ch}',
+    '.rt-done-card .rt-dc-act{flex:none;display:flex}',
+    '.rt-done-card .rt-cta{flex:none}',
+    '.rt-ui .rt-ago{display:inline-flex;align-items:center;margin-left:.4rem;padding:1px 8px;border:1px solid var(--rt-line);border-radius:999px;font:600 11.5px/1.5 var(--rt-font,inherit);color:var(--rt-muted);opacity:1;white-space:nowrap;font-variant-numeric:tabular-nums}',
+    '.rt-ui .rt-ago[data-rt-ago="0"]{color:var(--rt-accent);border-color:color-mix(in srgb,var(--rt-accent) 50%,transparent)}',
+    '.rt-ui summary{list-style:none;justify-content:space-between}',
+    '.rt-ui summary::-webkit-details-marker{display:none}',
+    '.rt-ui summary::after{content:"";width:8px;height:8px;border-right:1.8px solid var(--rt-muted);border-bottom:1.8px solid var(--rt-muted);transform:rotate(45deg);margin:-4px 4px 0 12px;transition:transform .2s}',
+    '.rt-ui details[open]>summary::after{transform:rotate(-135deg);margin-top:4px}',
+    '.rt-diary.rt-ui{font-size:15px}',
+    '.rt-diary.rt-ui .rt-row{display:flex;gap:10px;align-items:center;margin:0 0 8px}',
+    '.rt-diary.rt-ui select{font:inherit;color:var(--rt-ink);background:var(--rt-surface);border:1px solid var(--rt-line);border-radius:8px;min-height:40px;padding:0 10px}',
+    '.rt-diary.rt-ui label{font-size:13.5px;color:var(--rt-muted);font-weight:600}',
+    '.rt-diary.rt-ui .rt-diary-day{display:flex;justify-content:space-between;align-items:baseline;margin:26px 0 8px;font:650 14px/1.3 var(--rt-font,inherit);color:var(--rt-heading)}',
+    '.rt-diary.rt-ui .rt-diary-day span{font-weight:500;font-size:12.5px;color:var(--rt-muted)}',
+    '.rt-diary.rt-ui ul{list-style:none;margin:0;padding:0;border:1px solid var(--rt-line);border-radius:calc(var(--rt-radius,10px) + 2px);background:var(--rt-surface);overflow:hidden}',
+    '.rt-diary.rt-ui li{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--rt-line)}',
+    '.rt-diary.rt-ui li:last-child{border-bottom:0}',
+    '.rt-diary.rt-ui li>a,.rt-diary.rt-ui li>span:first-child{font-weight:600;color:var(--rt-heading);text-decoration:none;grid-column:1}',
+    '.rt-diary.rt-ui li>a:hover{color:var(--rt-accent);text-decoration:underline;text-underline-offset:3px}',
+    '.rt-diary.rt-ui li .rt-ago{grid-column:2;grid-row:1;margin:0}',
+    '.rt-diary.rt-ui li .rt-cat{grid-column:2;font-size:12px;color:var(--rt-muted);margin:0;opacity:1}',
+    '.rt-diary.rt-ui li .rt-crumb{grid-column:1;font-size:12.5px;color:var(--rt-muted);opacity:1}',
+    '.rt-diary.rt-ui .rt-muted{color:var(--rt-muted);opacity:1}',
+    '.rt-ui .rt-list li b{text-transform:none}',
+    '@media (max-width:480px){.rt-pop{padding:22px 18px 14px}.rt-big b{font-size:30px}.rt-stats{gap:8px}.rt-stat{padding:12px}}',
+    '@media (prefers-reduced-motion:no-preference){',
+    '.rt-ui .rt-backdrop,.rt-backdrop.rt-ui{animation:rt-fade .24s ease-out}',
+    '.rt-ui .rt-pop,.rt-pop.rt-ui{animation:rt-rise .42s cubic-bezier(.16,1,.3,1)}',
+    '.rt-ui .rt-sheet,.rt-sheet.rt-ui{animation:rt-rise .3s cubic-bezier(.16,1,.3,1)}',
+    '.rt-ui .rt-corner,.rt-corner.rt-ui{animation:rt-fade .4s ease-out}',
+    '@keyframes rt-fade{from{opacity:0}to{opacity:1}}',
+    '@keyframes rt-rise{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}}',
+    '@media (prefers-reduced-motion:reduce){.rt-ui *{transition:none!important;animation:none!important}}'
+  ].join('\n');
+  function injectChromeStyles(theme) {
+    injectStyles();
+    if (!doc) return;
+    if (!doc.getElementById('rt-chrome-style')) {
+      var s = el('style', { id: 'rt-chrome-style' });
+      s.textContent = CHROME_CSS;
+      (doc.head || doc.documentElement).appendChild(s);
+    }
+    applyTheme(theme);
   }
 
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+  function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  function bar(have, need) {
+    var b = el('span', { class: 'rt-bar', 'aria-hidden': 'true' });
+    if (need > 0 && need <= 10) { for (var i = 0; i < need; i++) b.appendChild(el('i', { class: i < have ? 'on' : null })); }
+    else { b.className = 'rt-bar rt-bar--fill'; b.style.height = '6px'; var f = el('i'); f.style.width = (need > 0 ? Math.min(100, Math.round(have / need * 100)) : 0) + '%'; b.appendChild(f); }
+    return b;
+  }
+  function meter(label, have, need) {
+    return el('div', { class: 'rt-meter' }, [el('div', { class: 'rt-meter-row' }, [el('span', { text: label }), el('b', { text: have + ' of ' + need })]), bar(Math.min(have, need), need)]);
+  }
+  function words(cfg) {
+    var L = cfg.labels || {};
+    return { lesson: L.lesson || 'lesson', lessons: L.lessons || 'lessons', quiz: L.quiz || 'quiz', quizzes: L.quizzes || 'quizzes' };
+  }
+
+  /** Model shared by the popover and the panel. */
+  function model(cfg, now) {
+    var r = cfg.get(), w = words(cfg);
+    var c = todayCounts(r, now), s = streak(r, now), b = behind(r, now);
+    var lp = r.pace.lessonsPerDay, qp = cfg.quizGoal !== false ? r.pace.quizzesPerDay : 0;
+    var goal = Math.max(0, lp) + Math.max(0, qp), done = Math.min(c.lessons, lp > 0 ? lp : c.lessons) + Math.min(c.quizzes, qp > 0 ? qp : 0);
+    var fcs = (cfg.modules || []).map(function (m) {
+      var f = forecast(r, m.remaining, now);
+      return { title: m.title, remaining: m.remaining, done: f.done, date: f.date ? fullDate(f.date + 'T12:00:00') : null, basis: f.basis };
+    });
+    if (cfg.badges) {
+      var fin = (cfg.modules || []).filter(function (x) { return x.total && !x.remaining; }).length;
+      var before = Object.keys(r.badges.earned).length;
+      updateBadges(r, { modulesFinished: Math.max(fin, cfg.modulesFinished || 0) }, now);
+      if (Object.keys(r.badges.earned).length !== before && cfg.save) cfg.save(r);
+    }
+    var ms = milestoneProgress(r, now, { badges: !!cfg.badges, modules: (cfg.modules || []).map(function (m) { return { title: m.title, done: m.total - m.remaining, total: m.total }; }) });
+    return { r: r, w: w, c: c, s: s, b: b, lp: lp, qp: qp, goal: goal, done: done, met: goalMet(r, now), fcs: fcs, ms: ms, days: activity(r, now, 30) };
+  }
+  function headline(m, cfg) {
+    if (m.met) return 'Today\u2019s pace is done';
+    if (cfg.continueTitle) return (m.r.history.length ? 'Next up: ' : 'Start with ') + cfg.continueTitle;
+    return 'Ready for today\u2019s ' + m.w.lesson;
+  }
+  function subline(m) {
+    var parts = [];
+    if (m.lp > 0) parts.push(plural(m.lp, m.w.lesson, m.w.lessons));
+    if (m.qp > 0) parts.push(plural(m.qp, m.w.quiz, m.w.quizzes));
+    if (m.met) return m.s.current > 1 ? 'Your ' + m.s.current + '-day streak is safe. One more is a bonus.' : 'Nice work. Come back tomorrow to start a streak.';
+    if (m.b.freshStart) return 'Welcome back. A fresh start takes one ' + m.w.lesson + '.';
+    if (m.b.lessons > 0) return 'You\u2019re ' + plural(m.b.lessons, m.w.lesson, m.w.lessons) + ' behind your pace. One today keeps things moving.';
+    return parts.length ? 'Your pace is ' + parts.join(' and ') + ' a day.' : 'Pick a daily pace from the Streak button.';
+  }
+  function statsBlock(m) {
+    var today = el('div', { class: 'rt-stat', 'data-rt-today': m.done + '/' + m.goal });
+    today.appendChild(el('p', { class: 'rt-stat-k', text: 'Today' }));
+    today.appendChild(el('div', { class: 'rt-big' }, [el('b', { text: String(m.done) }), el('span', { text: 'of ' + m.goal + ' done' })]));
+    if (m.lp > 0) today.appendChild(meter(cap(m.w.lessons), m.c.lessons, m.lp));
+    if (m.qp > 0) today.appendChild(meter(cap(m.w.quizzes), m.c.quizzes, m.qp));
+    var st = el('div', { class: 'rt-stat', 'data-rt-streak': String(m.s.current) });
+    var k = el('p', { class: 'rt-stat-k' }, [icon('flame', 'rt-flame'), 'Streak']);
+    k.firstChild.setAttribute('width', '15'); k.firstChild.setAttribute('height', '15');
+    st.appendChild(k);
+    st.appendChild(el('div', { class: 'rt-big' }, [el('b', { text: String(m.s.current) }), el('span', { text: m.s.current === 1 ? 'day' : 'days' })]));
+    var fz = el('p', { class: 'rt-freeze', 'data-banked': m.s.freezes > 0 ? '1' : null }, [icon('snow'), m.s.freezes > 0 ? '1 freeze banked' : 'Freeze earned in ' + plural(7 - (m.s.current % 7), 'day', 'days')]);
+    st.appendChild(fz);
+    var wk = el('ul', { class: 'rt-week', 'aria-label': 'Last 7 days', style: 'padding:0;margin:10px 0 0' });
+    m.days.slice(-7).forEach(function (d) { wk.appendChild(dot(d)); });
+    st.appendChild(wk);
+    return el('div', { class: 'rt-stats' }, [today, st]);
+  }
+  function dot(d) {
+    var when = fullDate(d.day + 'T12:00:00');
+    var txt = d.state === 'active' ? when + ': ' + plural(d.count, 'completion', 'completions') : d.state === 'frozen' ? when + ': freeze used' : d.state === 'today' ? when + ': today, nothing yet' : when + ': rest day';
+    return el('li', { class: 'rt-dot rt-dot--' + d.state, 'data-rt-day': d.day, 'data-rt-state': d.state, title: txt, 'aria-label': txt });
+  }
+  function milestoneCard(m) {
+    if (!m.ms) return null;
+    var ms = m.ms;
+    var f = el('span', { class: 'rt-bar rt-bar--fill', 'aria-hidden': 'true' }); var fi = el('i'); fi.style.width = Math.round(Math.min(1, ms.have / ms.need) * 100) + '%'; f.appendChild(fi);
+    return el('div', { class: 'rt-ms', 'data-rt-milestone': ms.id, role: 'group', 'aria-label': 'Next milestone: ' + ms.name + ', ' + ms.have + ' of ' + ms.need }, [
+      icon('target'),
+      el('div', { class: 'rt-ms-name' }, [el('b', { style: 'font-weight:600', text: ms.name }), el('span', { text: ms.have + ' of ' + ms.need })]),
+      f
+    ]);
+  }
+  function forecastLine(m) {
+    var f = m.fcs[0];
+    if (!f) return null;
+    var txt = f.done ? 'You\u2019ve finished ' + f.title + '.' : f.date ? 'At this pace you\u2019ll finish ' + f.title + ' by ' + f.date + '.' : f.remaining + ' left in ' + f.title + '. Set a pace to see a finish date.';
+    return el('p', { class: 'rt-fc', 'data-rt-forecast': f.title, text: txt });
+  }
+  function actions(cfg, m, onPrimary) {
+    var row = el('div', { class: 'rt-actions' });
+    var label = m.met ? 'Do one more' : 'Continue';
+    var cta = cfg.continueHref ? el('a', { class: 'rt-cta', href: cfg.continueHref, 'data-rt-pop-continue': '1' }) : el('button', { type: 'button', class: 'rt-cta', 'data-rt-pop-continue': '1' });
+    cta.appendChild(el('span', { text: label + (cfg.continueTitle ? ': ' + cfg.continueTitle : '') }));
+    cta.appendChild(icon('arrow'));
+    if (cta.tagName === 'BUTTON' && onPrimary) cta.addEventListener('click', onPrimary);
+    row.appendChild(cta);
+    if (cfg.diaryHref) { var d = el('a', { class: 'rt-ghost', href: cfg.diaryHref, 'data-rt-pop-diary': '1' }, [icon('book'), 'Diary']); row.appendChild(d); }
+    return { row: row, cta: cta };
+  }
+  function onloadSwitch(cfg, id) {
+    var r = cfg.get();
+    var input = el('input', { type: 'checkbox', id: id, role: 'switch', 'data-rt-onload-toggle': '1' });
+    input.checked = !(r.popover && r.popover.onLoad === false);
+    input.addEventListener('change', function () { var y = cfg.get(); setPopoverOnLoad(y, input.checked); cfg.save(y); input.setAttribute('aria-checked', String(input.checked)); });
+    input.setAttribute('aria-checked', String(input.checked));
+    return el('label', { class: 'rt-switch', for: id }, [input, el('span', { class: 'rt-track', 'aria-hidden': 'true' }), el('span', { text: 'Show this summary when I open the app' })]);
+  }
+
+  function focusables(root) {
+    return Array.prototype.filter.call(root.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select,textarea,summary,[tabindex]:not([tabindex="-1"])'), function (n) { return n.getClientRects().length > 0 || n.type === 'checkbox'; });
+  }
   function isVisibleFixed(n, skip) {
     if (!n || n.nodeType !== 1 || (skip && skip(n))) return false;
     var cs = global.getComputedStyle(n);
@@ -996,117 +1260,96 @@
     if (cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) return false;
     return true;
   }
-  /** Rects of visible fixed/sticky elements that sit in the bottom part of the viewport. */
+  /** Rects of visible fixed/sticky UI in the bottom half of the viewport (wrappers with pointer-events:none count by their visible children). */
   function occupiedRects(skip, extra) {
     var out = [];
     if (!doc || !doc.body || !global.getComputedStyle) return out;
-    var vh = global.innerHeight;
+    var vh = global.innerHeight, vw = global.innerWidth;
     var all = doc.body.getElementsByTagName('*');
+    var push = function (b) { if (b.width >= 2 && b.height >= 2 && b.bottom > vh * 0.5 && !(b.width >= vw * 0.98 && b.height >= vh * 0.9)) out.push({ left: b.left, top: b.top, right: b.right, bottom: b.bottom }); };
     for (var i = 0; i < all.length; i++) {
       var n = all[i];
       if (!isVisibleFixed(n, skip)) continue;
-      var b = n.getBoundingClientRect();
-      if (b.width < 2 || b.height < 2 || b.bottom < vh * 0.5) continue;
-      if (b.width >= global.innerWidth * 0.98 && b.height >= vh * 0.9) continue; // full-screen layers
-      out.push({ left: b.left, top: b.top, right: b.right, bottom: b.bottom });
+      if (global.getComputedStyle(n).pointerEvents === 'none') {
+        Array.prototype.forEach.call(n.children, function (k) { push(k.getBoundingClientRect()); });
+      } else push(n.getBoundingClientRect());
     }
-    if (extra) Array.prototype.forEach.call(doc.querySelectorAll(extra), function (n) {
-      var b = n.getBoundingClientRect(); if (b.width && b.height) out.push({ left: b.left, top: b.top, right: b.right, bottom: b.bottom });
-    });
+    if (extra) Array.prototype.forEach.call(doc.querySelectorAll(extra), function (n) { push(n.getBoundingClientRect()); });
     return out;
-  }
-
-  function focusables(root) {
-    return Array.prototype.filter.call(root.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])'), function (n) { return n.offsetParent !== null || n === doc.activeElement; });
-  }
-
-  /** Short summary used by the popover. */
-  function summary(cfg, now) {
-    var r = cfg.get();
-    var L = cfg.labels || {};
-    var lesson = L.lesson || 'lesson', lessons = L.lessons || 'lessons', quiz = L.quiz || 'quiz', quizzes = L.quizzes || 'quizzes';
-    var c = todayCounts(r, now), s = streak(r, now);
-    var pace = c.lessons + ' of ' + r.pace.lessonsPerDay + ' ' + (r.pace.lessonsPerDay === 1 ? lesson : lessons) + ' today';
-    if (cfg.quizGoal !== false && r.pace.quizzesPerDay > 0) pace += ' \u00b7 ' + c.quizzes + ' of ' + r.pace.quizzesPerDay + ' ' + (r.pace.quizzesPerDay === 1 ? quiz : quizzes);
-    var st = 'Streak: ' + s.current + (s.current === 1 ? ' day' : ' days') + ' \u00b7 ' + (s.freezes > 0 ? '1 freeze banked' : 'no freeze banked');
-    var ms = cfg.nextMilestone || nextMilestone(r, now, { badges: !!cfg.badges });
-    var fc = null, m = (cfg.modules || [])[0];
-    if (m) {
-      var f = forecast(r, m.remaining, now);
-      fc = f.done ? m.title + ': finished.' : f.date ? 'At your current pace, you\u2019ll finish ' + m.title + ' by ' + fullDate(f.date + 'T12:00:00') + '.' : m.title + ': ' + m.remaining + ' left. Set a pace to see a finish date.';
-    }
-    return { pace: pace, streak: st, milestone: ms, forecast: fc, met: goalMet(r, now), current: s.current };
   }
 
   var chrome = null;
   /**
-   * Mount the fixed corner buttons (progress / streak + diary), the progress panel and the welcome popover.
-   * cfg: the renderHome cfg (get, save, labels, continueHref, continueTitle, modules, dueReviews, reviewHref,
-   *      diaryHref, badges, milestoneList, quizGoal, onChange, onReminder) plus:
-   *      title (popover heading), avoid (CSS selector of extra UI to keep clear of),
-   *      order (corner preference), popover (default true), corner (force a corner)
-   * cfg may be a function returning that object (re-read on every open).
+   * Mount the fixed corner buttons (streak pill + diary), the progress panel and the welcome popover.
+   * cfg (object or function returning it): the renderHome cfg (get, save, labels, continueHref, continueTitle,
+   *   modules, dueReviews, reviewHref, diaryHref, badges, milestoneList, quizGoal, onChange, onReminder) plus
+   *   title, theme { surface, ink, heading, muted, line, accent, accentInk, accentSoft, radius, font, warm }
+   *   (values such as 'var(--panel)'), avoid (selector to keep clear of), order, corner, popover (default true).
    */
   function mountChrome(cfgIn) {
     if (!doc || !doc.body) return null;
     var getCfg = typeof cfgIn === 'function' ? cfgIn : function () { return cfgIn; };
     var cfg = getCfg();
-    injectChromeStyles();
+    injectChromeStyles(cfg.theme);
     if (chrome) chrome.destroy();
-    var stack = el('div', { class: 'rt-corner', 'data-rt-corner': '1', role: 'group', 'aria-label': 'Learning progress' });
-    var prog = el('button', { type: 'button', class: 'rt-corner-btn', 'data-rt-progress-btn': '1', 'aria-expanded': 'false', 'aria-controls': 'rt-sheet', 'aria-haspopup': 'dialog' });
-    stack.appendChild(prog);
+    var stack = el('div', { class: 'rt-ui rt-corner', 'data-rt-corner': '1', role: 'group', 'aria-label': 'Learning progress' });
     var diaryBtn = null;
-    if (cfg.diaryHref) { diaryBtn = el('a', { class: 'rt-corner-btn', href: cfg.diaryHref, 'data-rt-diary-btn': '1', 'aria-label': 'Open diary', text: 'Diary' }); stack.appendChild(diaryBtn); }
+    if (cfg.diaryHref) { diaryBtn = el('a', { class: 'rt-cbtn rt-cbtn--icon rt-tip', href: cfg.diaryHref, 'data-rt-diary-btn': '1', 'aria-label': 'Open diary', 'data-tip': 'Diary' }, [icon('book')]); stack.appendChild(diaryBtn); }
+    var prog = el('button', { type: 'button', class: 'rt-cbtn', 'data-rt-progress-btn': '1', 'aria-expanded': 'false', 'aria-controls': 'rt-sheet', 'aria-haspopup': 'dialog' });
+    stack.appendChild(prog);
     doc.body.appendChild(stack);
-    var spacer = el('div', { 'data-rt-corner-spacer': '1', 'aria-hidden': 'true', style: 'height:120px' });
+    var spacer = el('div', { 'data-rt-corner-spacer': '1', 'aria-hidden': 'true', style: 'height:130px' });
     doc.body.appendChild(spacer);
-    var sheet = null, lastFocus = null, dodge = 0, corner = cfg.corner || 'bottom-right', lift = 0;
+    var CORNER_KEY = 'rt-corner-v1';
+    var stored = null; try { stored = global.localStorage.getItem(CORNER_KEY); } catch (e) { stored = null; }
+    var sheet = null, dodge = 0, corner = cfg.corner || (stored === 'bottom-left' ? 'bottom-left' : 'bottom-right'), lift = 0;
+    stack.className = 'rt-ui rt-corner rt-corner--' + corner;
 
     function label() {
       var s = streak(getCfg().get());
       prog.textContent = '';
-      prog.appendChild(el('span', { 'aria-hidden': 'true', text: 'Streak ' + s.current }));
+      prog.appendChild(icon('flame', 'rt-flame'));
+      prog.appendChild(el('span', { class: 'rt-num', 'aria-hidden': 'true', text: String(s.current) }));
+      prog.appendChild(el('span', { class: 'rt-cap', 'aria-hidden': 'true', text: s.current === 1 ? 'day' : 'days' }));
+      if (s.current === 0) prog.setAttribute('data-rt-cold', '1'); else prog.removeAttribute('data-rt-cold');
       prog.setAttribute('aria-label', 'Progress: ' + s.current + '-day streak. Open pace, streak and milestones');
       prog.setAttribute('data-rt-streak', String(s.current));
     }
     function place() {
       var skip = function (n) { return stack.contains(n) || (sheet && sheet.contains(n)) || n.classList.contains('rt-banner') || n.classList.contains('rt-backdrop'); };
       var b = stack.getBoundingClientRect();
-      var res = cfg.corner ? { corner: cfg.corner, lift: 0 } : pickCorner(occupiedRects(skip, cfg.avoid), { w: Math.max(b.width, 60), h: Math.max(b.height, 44) }, { vw: global.innerWidth, vh: global.innerHeight, order: cfg.order });
+      var res = cfg.corner ? { corner: cfg.corner, lift: 0 } : pickCorner(occupiedRects(skip, cfg.avoid), { w: Math.max(b.width, 60), h: Math.max(b.height, 46) }, { vw: global.innerWidth, vh: global.innerHeight, order: cfg.order, margin: 18 });
       corner = res.corner; lift = res.lift || 0;
-      stack.className = 'rt-corner rt-corner--' + corner;
+      try { global.localStorage.setItem(CORNER_KEY, corner); } catch (e) { /* private mode */ }
+      stack.className = 'rt-ui rt-corner rt-corner--' + corner;
       stack.setAttribute('data-rt-corner', corner);
       apply();
-      spacer.style.height = Math.round(b.height + lift + 32) + 'px';
+      spacer.style.height = Math.round(b.height + lift + 36) + 'px';
       if (sheet) placeSheet();
     }
     function apply() {
       var off = lift + dodge;
-      stack.style.bottom = off ? 'calc(max(16px, env(safe-area-inset-bottom)) + ' + Math.round(off) + 'px)' : '';
+      stack.style.bottom = off ? 'calc(max(18px, env(safe-area-inset-bottom)) + ' + Math.round(off) + 'px)' : '';
     }
     function placeSheet() {
       var b = stack.getBoundingClientRect();
-      sheet.style.bottom = Math.round(global.innerHeight - b.top + 8) + 'px';
-      sheet.style.left = corner === 'bottom-left' ? 'max(16px, env(safe-area-inset-left))' : '';
-      sheet.style.right = corner === 'bottom-right' ? 'max(16px, env(safe-area-inset-right))' : '';
+      sheet.style.bottom = Math.round(global.innerHeight - b.top + 10) + 'px';
+      sheet.style.left = corner === 'bottom-left' ? 'max(18px, env(safe-area-inset-left))' : '';
+      sheet.style.right = corner === 'bottom-right' ? 'max(18px, env(safe-area-inset-right))' : '';
     }
-    // keep clear of any Complete control that scrolls under the stack
     var ticking = false;
     function dodgeComplete() {
       ticking = false;
       var prev = dodge; dodge = 0; apply();
-      var b = stack.getBoundingClientRect();
-      var need = 0;
+      var b = stack.getBoundingClientRect(), need = 0;
       Array.prototype.forEach.call(doc.querySelectorAll('[data-rt-mark-complete],[data-rt-mark-again],[data-rt-complete-control]'), function (n) {
         var r = n.getBoundingClientRect();
-        if (r.width && overlaps({ left: b.left, right: b.right, top: b.top, bottom: b.bottom }, r)) need = Math.max(need, b.bottom - r.top + 8);
+        if (r.width && overlaps({ left: b.left, right: b.right, top: b.top, bottom: b.bottom }, r)) need = Math.max(need, b.bottom - r.top + 10);
       });
       dodge = need;
       if (dodge !== prev || dodge) apply();
     }
     function onScroll() { if (!ticking) { ticking = true; (global.requestAnimationFrame || setTimeout)(dodgeComplete); } }
-
     function closeSheet(restore) {
       if (!sheet) return;
       sheet.remove(); sheet = null;
@@ -1115,39 +1358,17 @@
     }
     function openSheet() {
       var c = getCfg();
-      sheet = el('div', { id: 'rt-sheet', class: 'rt-sheet', role: 'dialog', 'aria-modal': 'false', 'aria-labelledby': 'rt-sheet-h', 'data-rt-sheet': '1' });
-      var x = el('button', { type: 'button', class: 'rt-x', 'aria-label': 'Close progress', text: '\u00d7' });
-      x.addEventListener('click', function () { closeSheet(); });
-      sheet.appendChild(el('div', { class: 'rt-sheet-head' }, [el('h2', { id: 'rt-sheet-h', style: 'font-size:1.05rem;margin:.6rem 0 .2rem', text: 'Your progress' }), x]));
-      var body = el('div');
-      sheet.appendChild(body);
-      function draw() {
-        body.innerHTML = '';
-        var home = el('div');
-        var hc = {}; Object.keys(c).forEach(function (k) { hc[k] = c[k]; });
-        hc.idp = 'rt-s-';
-        hc.onChange = function () { if (c.onChange) c.onChange(); label(); };
-        renderHome(home, hc);
-        var h = home.querySelector('h2'); if (h) h.textContent = 'Pace';
-        body.appendChild(home);
-        var weekly = home.querySelector('[data-rt-weekly]');
-        home.insertBefore(renderStrip(c.get()), weekly || null);
-        var r = c.get();
-        var on = el('input', { type: 'checkbox', id: 'rt-s-onload', 'data-rt-onload-toggle': '1' });
-        on.checked = !(r.popover && r.popover.onLoad === false);
-        on.addEventListener('change', function () { var y = c.get(); setPopoverOnLoad(y, on.checked); c.save(y); });
-        body.appendChild(el('p', {}, [el('label', { for: 'rt-s-onload', style: 'display:inline-flex;gap:.4rem;align-items:center;min-height:44px' }, [on, 'Show the welcome summary when the app opens'])]));
-      }
-      draw();
+      sheet = el('div', { id: 'rt-sheet', class: 'rt-ui rt-card rt-sheet', role: 'dialog', 'aria-modal': 'false', 'aria-labelledby': 'rt-sheet-h', 'data-rt-sheet': '1' });
+      renderProgress(sheet, c, function () { closeSheet(); }, function () { if (c.onChange) c.onChange(); label(); });
       doc.body.appendChild(sheet);
       placeSheet();
       prog.setAttribute('aria-expanded', 'true');
-      var f = focusables(sheet); (f[1] || f[0] || sheet).focus();
+      var x = sheet.querySelector('.rt-x'); if (x) x.focus();
     }
     prog.addEventListener('click', function () { if (sheet) closeSheet(); else openSheet(); });
     function onKey(e) {
       if (e.key !== 'Escape' && e.key !== 'Esc') return;
-      if (doc.querySelector('.rt-backdrop')) return; // popover handles its own Esc
+      if (doc.querySelector('.rt-backdrop')) return;
       if (sheet) { e.preventDefault(); closeSheet(); }
     }
     function onDown(e) { if (sheet && !sheet.contains(e.target) && !stack.contains(e.target)) closeSheet(false); }
@@ -1159,15 +1380,21 @@
     global.addEventListener('resize', onResize);
     global.addEventListener('scroll', onScroll, { passive: true });
     label(); place();
-    var timers = [setTimeout(place, 700), setTimeout(place, 2500)];
-    setTimeout(dodgeComplete, 50);
-
+    var timers = [setTimeout(place, 700), setTimeout(place, 2500), setTimeout(dodgeComplete, 60)];
+    // widgets such as an AI helper or a chat button often mount late: re-check the corner when the body changes
+    var moT = null, mo = null;
+    if (global.MutationObserver) {
+      mo = new global.MutationObserver(function (list) {
+        for (var i = 0; i < list.length; i++) for (var j = 0; j < list[i].addedNodes.length; j++) { var a = list[i].addedNodes[j]; if (a.nodeType === 1 && a !== stack && a !== sheet && a !== spacer && !(a.classList && (a.classList.contains('rt-backdrop') || a.classList.contains('rt-banner')))) { clearTimeout(moT); moT = setTimeout(place, 120); return; } }
+      });
+      mo.observe(doc.body, { childList: true });
+    }
     chrome = {
-      stack: stack, refresh: function () { label(); if (sheet) { closeSheet(false); openSheet(); } }, place: place,
-      open: openSheet, close: closeSheet, corner: function () { return corner; },
+      stack: stack, place: place, open: openSheet, close: closeSheet, corner: function () { return corner; },
+      refresh: function () { label(); if (sheet) { closeSheet(false); openSheet(); } },
       destroy: function () {
         closeSheet(false); stack.remove(); spacer.remove();
-        timers.forEach(clearTimeout);
+        timers.forEach(clearTimeout); if (mo) mo.disconnect(); clearTimeout(moT);
         doc.removeEventListener('keydown', onKey); doc.removeEventListener('mousedown', onDown); doc.removeEventListener('touchstart', onDown);
         global.removeEventListener('resize', onResize); global.removeEventListener('scroll', onScroll);
         chrome = null;
@@ -1177,6 +1404,57 @@
     return chrome;
   }
 
+  /** Progress panel body (used inside the corner sheet). */
+  function renderProgress(box, c, onClose, onChange) {
+    var now = new Date();
+    var m = model(c, now);
+    box.innerHTML = '';
+    var x = el('button', { type: 'button', class: 'rt-x', 'aria-label': 'Close progress' }, [icon('x')]);
+    x.addEventListener('click', onClose);
+    box.appendChild(x);
+    box.appendChild(el('h2', { class: 'rt-h', id: 'rt-sheet-h', text: 'Your progress' }));
+    box.appendChild(el('p', { class: 'rt-sub', 'aria-live': 'polite', text: subline(m) }));
+    box.appendChild(statsBlock(m));
+    var ms = milestoneCard(m); if (ms) box.appendChild(ms);
+    // 30 days
+    var cal = el('ul', { class: 'rt-cal', 'aria-label': 'Activity over the last 30 days', 'data-rt-strip': '1' });
+    m.days.forEach(function (d) { cal.appendChild(dot(d)); });
+    var active = m.days.filter(function (d) { return d.state === 'active'; }).length;
+    var lg = el('p', { class: 'rt-legend' });
+    [['active', 'Active'], ['frozen', 'Freeze'], ['missed', 'Rest day'], ['today', 'Today']].forEach(function (p) { lg.appendChild(el('span', {}, [el('i', { class: 'rt-dot rt-dot--' + p[0], 'aria-hidden': 'true' }), p[1]])); });
+    box.appendChild(el('section', { class: 'rt-sec' }, [el('h3', { class: 'rt-sec-h' }, ['Last 30 days', el('span', { text: plural(active, 'active day', 'active days') })]), cal, lg]));
+    // badges / milestones
+    if (c.badges) {
+      var ul = el('ul', { class: 'rt-badges' });
+      BADGES.forEach(function (b) { var e = !!m.r.badges.earned[b.id]; ul.appendChild(el('li', { 'data-earned': e ? '1' : null }, [icon(e ? 'check' : 'lock'), b.name])); });
+      box.appendChild(el('section', { class: 'rt-sec' }, [el('h3', { class: 'rt-sec-h' }, ['Badges', el('span', { text: 'Level ' + m.r.badges.level + ', ' + m.r.badges.xp + ' XP' })]), ul]));
+    } else if (c.milestoneList && c.milestoneList.length) {
+      var ml = el('ul', { class: 'rt-badges' });
+      c.milestoneList.forEach(function (t) { ml.appendChild(el('li', { 'data-earned': '1' }, [icon('check'), t])); });
+      box.appendChild(el('section', { class: 'rt-sec' }, [el('h3', { class: 'rt-sec-h', text: 'Milestones reached' }), ml]));
+    }
+    // forecasts
+    if (m.fcs.length) {
+      var fl = el('ul', { class: 'rt-list' });
+      m.fcs.slice(0, 4).forEach(function (f) {
+        fl.appendChild(el('li', { 'data-rt-forecast': f.title }, [el('b', { text: cap(f.title) }), ' ' + (f.done ? 'finished' : f.date ? 'by ' + f.date : f.remaining + ' left')]));
+      });
+      box.appendChild(el('section', { class: 'rt-sec' }, [el('h3', { class: 'rt-sec-h' }, ['Finish dates', el('span', { text: m.fcs[0].basis === 'actual' ? 'from your recent pace' : 'from your set pace' })]), fl]));
+    }
+    if (c.dueReviews > 0) {
+      var rv = el('p', { class: 'rt-note', 'data-rt-reviews': String(c.dueReviews) });
+      rv.appendChild(c.reviewHref ? el('a', { class: 'rt-link', href: c.reviewHref, text: 'Review ' + plural(c.dueReviews, 'missed question', 'missed questions') }) : doc.createTextNode('Review ' + plural(c.dueReviews, 'missed question', 'missed questions')));
+      box.appendChild(el('div', { class: 'rt-sec' }, [rv]));
+    }
+    box.appendChild(actions(c, m).row);
+    var hc = {}; Object.keys(c).forEach(function (k) { hc[k] = c[k]; });
+    hc.idp = 'rt-s-';
+    hc.onChange = onChange;
+    var set = settingsBlock(hc, function () { renderProgress(box, c, onClose, onChange); var d = box.querySelector('details.rt-settings'); if (d) d.open = true; });
+    box.appendChild(set);
+    box.appendChild(el('div', { class: 'rt-foot' }, [onloadSwitch(c, 'rt-s-onload')]));
+  }
+
   /** Show the welcome popover if due today (once per local day). Returns true when shown. */
   function maybeWelcome(getCfg, force) {
     var c = getCfg();
@@ -1184,27 +1462,21 @@
     if (!force && !popoverDue(r)) return false;
     if (doc.querySelector('.rt-backdrop')) return false;
     markPopoverShown(r); c.save(r);
-    var sm = summary(c, new Date());
+    var m = model(c, new Date());
     var lastFocus = doc.activeElement;
-    var back = el('div', { class: 'rt-backdrop', 'data-rt-welcome': '1' });
-    var box = el('div', { class: 'rt-pop', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'rt-pop-h', 'aria-describedby': 'rt-pop-d' });
-    var x = el('button', { type: 'button', class: 'rt-x', 'aria-label': 'Close', 'data-rt-pop-close': '1', text: '\u00d7' });
+    var back = el('div', { class: 'rt-ui rt-backdrop', 'data-rt-welcome': '1' });
+    var box = el('div', { class: 'rt-card rt-pop', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'rt-pop-h', 'aria-describedby': 'rt-pop-d' });
+    var x = el('button', { type: 'button', class: 'rt-x', 'aria-label': 'Close', 'data-rt-pop-close': '1' }, [icon('x')]);
     box.appendChild(x);
-    box.appendChild(el('h2', { id: 'rt-pop-h', text: c.title ? 'Welcome back to ' + c.title : 'Welcome back' }));
-    var d = el('div', { id: 'rt-pop-d' });
-    d.appendChild(el('p', { 'data-rt-pop-pace': '1', text: (sm.met ? 'You met today\u2019s pace: ' : 'Today: ') + sm.pace + '.' }));
-    d.appendChild(el('p', { 'data-rt-pop-streak': String(sm.current), text: sm.streak + '.' }));
-    if (sm.milestone) d.appendChild(el('p', { 'data-rt-pop-milestone': '1', text: 'Next milestone: ' + sm.milestone + '.' }));
-    if (sm.forecast) d.appendChild(el('p', { 'data-rt-pop-forecast': '1', text: sm.forecast }));
-    box.appendChild(d);
-    var row = el('div', { class: 'rt-row' });
-    var cont = c.continueHref ? el('a', { class: 'rt-btn rt-btn--primary', href: c.continueHref, 'data-rt-pop-continue': '1', text: 'Continue' + (c.continueTitle ? ': ' + c.continueTitle : '') }) : el('button', { type: 'button', class: 'rt-btn rt-btn--primary', 'data-rt-pop-continue': '1', text: 'Continue' });
-    row.appendChild(cont);
-    if (c.diaryHref) row.appendChild(el('a', { class: 'rt-btn', href: c.diaryHref, 'data-rt-pop-diary': '1', text: 'Diary' }));
-    box.appendChild(row);
-    var off = el('input', { type: 'checkbox', id: 'rt-pop-off', 'data-rt-pop-off': '1' });
-    box.appendChild(el('p', { class: 'rt-muted' }, [el('label', { for: 'rt-pop-off' }, [off, 'Don\u2019t show on load']), el('span', { class: 'rt-sr', text: ' You can turn it back on from the Streak button.' })]));
-    off.addEventListener('change', function () { var y = c.get(); setPopoverOnLoad(y, !off.checked); c.save(y); });
+    box.appendChild(el('h2', { class: 'rt-h', id: 'rt-pop-h', text: headline(m, c) }));
+    box.appendChild(el('p', { class: 'rt-sub', id: 'rt-pop-d', text: subline(m) }));
+    box.appendChild(statsBlock(m));
+    var ms = milestoneCard(m); if (ms) box.appendChild(ms);
+    var fc = forecastLine(m); if (fc) box.appendChild(fc);
+    var act = actions(c, m, function () { close(); });
+    box.appendChild(act.row);
+    box.appendChild(el('div', { class: 'rt-foot' }, [onloadSwitch(c, 'rt-pop-onload')]));
+    var sw = box.querySelector('#rt-pop-onload'); if (sw) sw.setAttribute('data-rt-pop-off', '1');
     back.appendChild(box);
     function close() {
       back.remove();
@@ -1221,11 +1493,11 @@
       else if (!e.shiftKey && (doc.activeElement === last || !box.contains(doc.activeElement))) { e.preventDefault(); first.focus(); }
     }
     x.addEventListener('click', close);
-    if (cont.tagName === 'BUTTON') cont.addEventListener('click', close);
     back.addEventListener('mousedown', function (e) { if (e.target === back) close(); });
     doc.addEventListener('keydown', key, true);
     doc.body.appendChild(back);
-    cont.focus();
+    box.setAttribute('tabindex', '-1');
+    box.focus();
     return true;
   }
 
@@ -1240,10 +1512,10 @@
     notificationSupport: notificationSupport, enableReminders: enableReminders, disableReminders: disableReminders,
     reminderDelay: reminderDelay,
     popoverDue: popoverDue, markPopoverShown: markPopoverShown, setPopoverOnLoad: setPopoverOnLoad,
-    activity: activity, nextMilestone: nextMilestone, pickCorner: pickCorner,
+    activity: activity, nextMilestone: nextMilestone, milestoneProgress: milestoneProgress, pickCorner: pickCorner,
     ui: { injectStyles: injectStyles, agoBadge: agoBadge, catBadge: catBadge, decorate: decorate, banner: banner,
       scheduleReminder: scheduleReminder, renderHome: renderHome, renderMarkComplete: renderMarkComplete, renderDiary: renderDiary,
-      renderStrip: renderStrip, mountChrome: mountChrome, welcome: maybeWelcome, occupiedRects: occupiedRects, refreshChrome: function () { if (chrome) chrome.refresh(); } }
+      renderProgress: renderProgress, mountChrome: mountChrome, welcome: maybeWelcome, occupiedRects: occupiedRects, refreshChrome: function () { if (chrome) chrome.refresh(); } }
   };
   global.RetentionCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

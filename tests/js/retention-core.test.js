@@ -272,3 +272,16 @@ test('pickCorner: bottom-right when free; bottom-left when an AI panel or chat s
   assert.strictEqual(both.corner, 'bottom-right');
   assert.strictEqual(C.pickCorner([aiPanel], size, { vw, vh, order: ['bottom-left', 'bottom-right'] }).corner, 'bottom-left');
 });
+
+test('milestoneProgress: badge progress, module progress, streak steps', () => {
+  const r = fresh();
+  assert.deepStrictEqual(C.milestoneProgress(r, at('2026-11-01'), { badges: true }), { id: 'first-lesson', name: 'First lesson completed', have: 0, need: 1, unit: 'lesson' });
+  C.complete(r, U('a'), { now: at('2026-11-01') });
+  C.updateBadges(r, {}, at('2026-11-01'));
+  const m = C.milestoneProgress(r, at('2026-11-01'), { badges: true, modules: [{ title: 'Arrays', done: 1, total: 4 }, { title: 'Graphs', done: 0, total: 3 }] });
+  assert.strictEqual(m.id, 'first-module');
+  assert.strictEqual(m.name, 'First module finished: Arrays');
+  assert.deepStrictEqual([m.have, m.need], [1, 4]);
+  const s = C.milestoneProgress(r, at('2026-11-01'), { badges: false });
+  assert.deepStrictEqual([s.name, s.have, s.need], ['3-day streak', 1, 3]);
+});
