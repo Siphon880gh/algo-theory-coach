@@ -123,11 +123,39 @@
     if (c) { var b = C.ui.agoBadge(c.completedAt); var p = document.createElement('p'); p.className = 'rt-muted'; p.textContent = 'Passed before'; p.appendChild(b); live.parentNode.insertBefore(p, live); }
   }
 
+  function initHome() {
+    var main = document.querySelector('main.dashboard');
+    if (!main) return;
+    var sec = document.createElement('section');
+    sec.id = 'rt-home';
+    var anchor = main.querySelector('.home-tracks') || main.querySelector('.next-action') || main.querySelector('.lede');
+    if (anchor && anchor.nextSibling) main.insertBefore(sec, anchor.nextSibling); else main.appendChild(sec);
+    draw(sec);
+  }
+  function draw(sec) {
+    var r = get();
+    var nextId = C.nextUnit(r, guideOrder());
+    var next = nextId ? bySlug[nextId.split(':')[1]] : null;
+    var mods = modules(r).filter(function (m, i) { return i === 0 || (m.done > 0 && m.remaining > 0); }).slice(0, 3);
+    var due = typeof C.dueReviews === 'function' && HAS.review ? C.dueReviews(r) : [];
+    var stale = [];
+    if (HAS.recency) {
+      var rec = C.categoryRecency(r, allUnits());
+      stale = C.staleCategories(rec, 14).map(function (k) { return { key: k, days: rec[k].ago.days }; });
+    }
+    C.ui.renderHome(sec, {
+      get: get, save: save, labels: LABELS,
+      continueHref: next ? href('guides', next.slug) : null, continueTitle: next ? next.title : '',
+      modules: mods, dueReviews: due.length, reviewHref: due.length ? (due[0].href || unitHref(due[0].unitId)) : null,
+      diaryHref: HAS.diary ? R.diary : null, stale: stale, badges: true,
+      onChange: function () {}, onReminder: function () { if (HAS.reminders) schedule(); }
+    });
+  }
 
 
 
 
   var HAS = { review: false, reminders: false, recency: false, diary: false };
   window.TheoryRetention = { get: get, quizFinished: quizFinished, coachFinished: coachFinished };
-  initGuidePage(); initQuizPage();
+  initGuidePage(); initQuizPage(); initHome();
 })();
