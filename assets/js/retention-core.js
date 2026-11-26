@@ -849,8 +849,69 @@
    * Mark complete control at the end of a unit.
    * cfg: { get(), save(r), unit: { id, title, path, kind }, label, onComplete(result) }
    */
+  /**
+   * Long pages get a second, compact Complete control near the top (after the item's h1),
+   * kept in sync with the card at the end. Skipped when the page is short (under about
+   * 1.5 viewports), when cfg.top === false, or when the app already has a sticky control
+   * that stays reachable at the bottom (pass top: false then).
+   */
+  var LONG_PAGE = 1.5;
+  function topAnchor(container, cfg) {
+    if (cfg.top === false) return null;
+    if (cfg.top && cfg.top.nodeType === 1) return cfg.top;
+    var scope = (cfg.top && typeof cfg.top === 'string') ? doc.querySelector(cfg.top) : null;
+    if (scope) return scope;
+    var root = container.closest('main, article, [role=main]') || doc.body;
+    var h = root.querySelector('h1') || doc.querySelector('main h1, h1');
+    if (!h || h.contains(container) || !(h.compareDocumentPosition(container) & 4)) return null;
+    return h;
+  }
+  function isLongPage(pageHeight, viewportHeight) { return pageHeight > (viewportHeight || 800) * LONG_PAGE; }
+  function pageIsLong() {
+    return isLongPage(Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0), global.innerHeight);
+  }
+  function drawTop(container, cfg, redraw) {
+    var top = container._rtTop;
+    var anchor = topAnchor(container, cfg);
+    if (!anchor || !pageIsLong()) { if (top) { top.remove(); container._rtTop = null; } return; }
+    if (!top) {
+      top = el('div', { class: 'rt-ui rt-topdone', 'data-rt-top-complete': '1' });
+      anchor.parentNode.insertBefore(top, anchor.nextSibling);
+      container._rtTop = top;
+    }
+    var c = cfg.get().completions[cfg.unit.id];
+    top.innerHTML = '';
+    top.setAttribute('data-rt-state', c ? 'done' : 'open');
+    if (c) {
+      top.appendChild(el('span', { class: 'rt-top-chip' }, [icon('check'), el('span', { text: 'Completed' }), agoBadge(c.completedAt)]));
+      return;
+    }
+    var b = el('button', { type: 'button', class: 'rt-ghost rt-top-btn', 'data-rt-mark-complete-top': cfg.unit.id }, [icon('check'), el('span', { text: cfg.label || 'Mark complete' })]);
+    b.addEventListener('click', function () { redraw(true); });
+    top.appendChild(b);
+  }
   function renderMarkComplete(container, cfg) {
     if (!container) return;
+    drawCard(container, cfg);
+    if (!container._rtTopWired) {
+      container._rtTopWired = true;
+      var re = function () { drawTop(container, cfg, topComplete); };
+      if (doc.readyState !== 'complete') global.addEventListener('load', re);
+      setTimeout(re, 900);
+      var rt = null; global.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(re, 200); });
+    }
+    function topComplete() {
+      var x = cfg.get();
+      var res = complete(x, cfg.unit, { source: 'button' });
+      cfg.save(x);
+      if (cfg.onComplete) cfg.onComplete(res);
+      renderMarkComplete(container, cfg);
+      var chip = container._rtTop; if (chip) { chip.setAttribute('tabindex', '-1'); chip.focus(); }
+      if (chrome) chrome.refresh();
+    }
+    drawTop(container, cfg, topComplete);
+  }
+  function drawCard(container, cfg) {
     injectChromeStyles(cfg.theme);
     var r = cfg.get();
     container.innerHTML = '';
@@ -934,7 +995,9 @@
     check: '<path d="M5 12.5l4.3 4.3L19 7.3"/>',
     arrow: '<path d="M5 12h13.5M13 6.5 18.5 12 13 17.5"/>',
     target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/>',
-    lock: '<rect x="5.5" y="10.5" width="13" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>'
+    lock: '<rect x="5.5" y="10.5" width="13" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
+    glow: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
+    glowoff: '<circle cx="12" cy="12" r="4" stroke-dasharray="2.5 2.5"/>'
   };
   function icon(name, cls) {
     var s = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -979,7 +1042,7 @@
     if (!t.warm) t.warm = auto.dark ? '#e7a35a' : '#b5651d';
     var decl = Object.keys(THEME_KEYS).filter(function (k) { return t[k] && k !== 'dark'; }).map(function (k) { return THEME_KEYS[k] + ':' + t[k]; }).join(';');
     var s = doc.getElementById('rt-theme') || el('style', { id: 'rt-theme' });
-    s.textContent = '.rt-ui{' + decl + ';--rt-shadow:' + (auto.dark ? '0 18px 48px -12px rgba(0,0,0,.65),0 2px 6px rgba(0,0,0,.35)' : '0 18px 44px -14px rgba(24,32,44,.32),0 2px 6px rgba(24,32,44,.08)') + '}';
+    s.textContent = '.rt-ui,html[data-rt-hl]{' + decl + ';--rt-shadow:' + (auto.dark ? '0 18px 48px -12px rgba(0,0,0,.65),0 2px 6px rgba(0,0,0,.35)' : '0 18px 44px -14px rgba(24,32,44,.32),0 2px 6px rgba(24,32,44,.08)') + '}';
     (doc.head || doc.documentElement).appendChild(s);
   }
 
@@ -1041,14 +1104,30 @@
     '.rt-ui .rt-ms .rt-bar--fill,.rt-ms.rt-ui .rt-bar--fill{height:5px;background:color-mix(in srgb,var(--rt-accent) 18%,transparent)}',
     '.rt-ui .rt-fc,.rt-fc.rt-ui{margin:14px 0 0;font-size:13.5px;color:var(--rt-muted);text-wrap:pretty}',
     '.rt-ui .rt-actions,.rt-actions.rt-ui{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}',
+    '.rt-ui label{flex-direction:row;margin:0}',
+    '.rt-ui .rt-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
+    '.rt-ui .rt-hl-btn .rt-hl-text{font-size:13.5px;font-weight:600;color:var(--rt-heading)}',
+    '.rt-ui .rt-hl-btn[data-rt-hl-mode=none] .rt-hl-text{color:var(--rt-muted)}',
+    '.rt-ui .rt-hl-btn[aria-pressed=true]{border-color:color-mix(in srgb,var(--rt-accent) 60%,var(--rt-line))}',
+    '.rt-ui .rt-hl-btn[aria-pressed=true] svg{color:var(--rt-accent)}',
+    'html[data-rt-hl=learned] [data-rt-learned="1"],html[data-rt-hl=unlearned] [data-rt-learned="0"]{box-shadow:0 0 0 2px var(--rt-accent),0 0 26px 4px color-mix(in srgb,var(--rt-accent) 42%,transparent)!important;transition:box-shadow .25s ease-out;position:relative;z-index:1}',
+    '@media (prefers-reduced-motion:reduce){html[data-rt-hl] [data-rt-learned]{transition:none!important}}',
+    '.rt-topdone.rt-ui{display:flex;align-items:center;gap:10px;margin:10px 0 18px;min-height:44px}',
+    '.rt-topdone.rt-ui .rt-top-btn{min-height:40px;padding:0 14px;font-size:13.5px}',
+    '.rt-topdone.rt-ui .rt-top-chip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 12px 0 10px;border-radius:999px;background:var(--rt-accent-soft);color:var(--rt-heading);font:600 13px/1 var(--rt-font,inherit)}',
+    '.rt-topdone.rt-ui .rt-top-chip svg{width:15px;height:15px;color:var(--rt-accent)}',
+    '.rt-topdone.rt-ui .rt-top-chip .rt-ago{margin-left:2px}',
+    '.rt-topdone.rt-ui:focus{outline:none}',
+    '.rt-ui .rt-sheet .rt-actions .rt-ghost,.rt-sheet.rt-ui .rt-actions .rt-ghost{flex:1 0 auto;justify-content:center}',
     '.rt-ui .rt-cta,.rt-cta.rt-ui{flex:1 1 auto;min-height:46px;border-radius:var(--rt-radius,10px);border:1px solid var(--rt-accent);background:var(--rt-accent);color:var(--rt-accent-ink);font:600 15px/1.2 var(--rt-font,inherit);display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 16px;text-decoration:none;cursor:pointer;transition:filter .15s,transform .15s cubic-bezier(.16,1,.3,1)}',
     '.rt-ui .rt-cta:hover,.rt-cta.rt-ui:hover{filter:brightness(1.08);transform:translateY(-1px)}',
     '.rt-ui .rt-cta span,.rt-cta.rt-ui span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:24ch}',
     '.rt-ui .rt-ghost,.rt-ghost.rt-ui{min-height:46px;border-radius:var(--rt-radius,10px);border:1px solid var(--rt-line);background:transparent;color:var(--rt-heading);font:600 15px/1.2 var(--rt-font,inherit);display:inline-flex;align-items:center;gap:8px;padding:10px 16px;text-decoration:none;cursor:pointer}',
     '.rt-ui .rt-ghost:hover,.rt-ghost.rt-ui:hover{border-color:var(--rt-accent);background:var(--rt-accent-soft)}',
     '.rt-ui .rt-foot,.rt-foot.rt-ui{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--rt-line)}',
-    '.rt-ui .rt-switch,.rt-switch.rt-ui{display:flex;align-items:center;gap:12px;cursor:pointer;font-size:13.5px;color:var(--rt-muted);min-height:44px}',
-    '.rt-ui .rt-switch input,.rt-switch.rt-ui input{position:absolute;opacity:0;width:1px;height:1px}',
+    '.rt-ui .rt-switch,.rt-switch.rt-ui{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center;justify-content:flex-start!important;gap:12px;position:relative;cursor:pointer;font:500 13.5px/1.4 var(--rt-font,inherit);color:var(--rt-muted);min-height:44px;margin:0;padding:0;text-transform:none;letter-spacing:normal;width:auto}',
+    '.rt-ui .rt-switch>span:last-child{display:inline!important;flex:1 1 auto;margin:0;text-align:left}',
+    '.rt-ui .rt-switch input,.rt-switch.rt-ui input{position:absolute!important;left:0;top:50%;opacity:0;width:1px!important;height:1px!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;-webkit-appearance:none;appearance:none;pointer-events:none}',
     '.rt-ui .rt-switch .rt-track,.rt-switch.rt-ui .rt-track{position:relative;width:38px;height:22px;border-radius:999px;background:var(--rt-line);flex:none;transition:background .2s}',
     '.rt-ui .rt-switch .rt-track::after,.rt-switch.rt-ui .rt-track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:999px;background:var(--rt-surface);box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s cubic-bezier(.16,1,.3,1)}',
     '.rt-ui .rt-switch input:checked+.rt-track,.rt-switch.rt-ui input:checked+.rt-track{background:var(--rt-accent)}',
@@ -1286,6 +1365,49 @@
    *   title, theme { surface, ink, heading, muted, line, accent, accentInk, accentSoft, radius, font, warm }
    *   (values such as 'var(--panel)'), avoid (selector to keep clear of), order, corner, popover (default true).
    */
+  /** Browse-style highlight: none -> learned -> not yet learned -> none. */
+  var HL_MODES = ['none', 'learned', 'unlearned'];
+  function nextHighlight(mode) { var i = HL_MODES.indexOf(mode); if (i < 0) i = 0; return HL_MODES[(i + 1) % HL_MODES.length]; }
+  var HL_TEXT = { none: 'Highlight off', learned: 'Learned', unlearned: 'Not yet learned' };
+  var HL_NEXT = { none: 'highlight learned cards', learned: 'highlight cards not yet learned', unlearned: 'turn highlighting off' };
+
+  function mountHighlight(stack, getCfg) {
+    var hc = getCfg().highlight, key = hc.key || 'rt-highlight-v1';
+    var mode = 'none'; try { mode = global.localStorage.getItem(key) || 'none'; } catch (e) { mode = 'none'; }
+    if (HL_MODES.indexOf(mode) < 0) mode = 'none';
+    var btn = el('button', { type: 'button', class: 'rt-cbtn rt-hl-btn', 'data-rt-highlight-btn': '1' });
+    var live = el('span', { class: 'rt-sr', 'aria-live': 'polite' });
+    stack.insertBefore(btn, stack.firstChild);
+    stack.appendChild(live);
+    var idOf = hc.idOf || function (card) { return card.getAttribute('data-unit-id'); };
+    function mark() {
+      var r = getCfg().get(), n = 0, learned = 0;
+      Array.prototype.forEach.call(doc.querySelectorAll(hc.cards), function (card) {
+        var id = idOf(card); if (!id) return;
+        var on = !!r.completions[id]; n++; if (on) learned++;
+        card.setAttribute('data-rt-learned', on ? '1' : '0');
+      });
+      return { n: n, learned: learned };
+    }
+    function draw(announce) {
+      var c = mark();
+      if (mode === 'none') doc.documentElement.setAttribute('data-rt-hl', 'none'); else doc.documentElement.setAttribute('data-rt-hl', mode);
+      btn.textContent = '';
+      btn.appendChild(icon(mode === 'none' ? 'glowoff' : 'glow'));
+      btn.appendChild(el('span', { class: 'rt-cap rt-hl-text', text: HL_TEXT[mode] }));
+      btn.setAttribute('data-rt-hl-mode', mode);
+      btn.setAttribute('aria-pressed', mode === 'none' ? 'false' : 'true');
+      btn.setAttribute('aria-label', 'Highlight: ' + (mode === 'none' ? 'off' : mode === 'learned' ? 'learned cards' : 'cards not yet learned') + '. Click to ' + HL_NEXT[mode]);
+      if (announce) live.textContent = mode === 'none' ? 'Highlighting off' : (mode === 'learned' ? c.learned + ' of ' + c.n + ' learned' : (c.n - c.learned) + ' of ' + c.n + ' not yet learned');
+    }
+    btn.addEventListener('click', function () { mode = nextHighlight(mode); try { global.localStorage.setItem(key, mode); } catch (e) { /* private mode */ } draw(true); });
+    var t = null, mo = global.MutationObserver ? new global.MutationObserver(function () { clearTimeout(t); t = setTimeout(mark, 150); }) : null;
+    var root = hc.root ? doc.querySelector(hc.root) : doc.querySelector('main') || doc.body;
+    if (mo && root) mo.observe(root, { childList: true, subtree: true });
+    draw(false);
+    return { mark: function () { draw(false); }, destroy: function () { if (mo) mo.disconnect(); btn.remove(); live.remove(); doc.documentElement.removeAttribute('data-rt-hl'); } };
+  }
+
   function mountChrome(cfgIn) {
     if (!doc || !doc.body) return null;
     var getCfg = typeof cfgIn === 'function' ? cfgIn : function () { return cfgIn; };
@@ -1297,6 +1419,8 @@
     if (cfg.diaryHref) { diaryBtn = el('a', { class: 'rt-cbtn rt-cbtn--icon rt-tip', href: cfg.diaryHref, 'data-rt-diary-btn': '1', 'aria-label': 'Open diary', 'data-tip': 'Diary' }, [icon('book')]); stack.appendChild(diaryBtn); }
     var prog = el('button', { type: 'button', class: 'rt-cbtn', 'data-rt-progress-btn': '1', 'aria-expanded': 'false', 'aria-controls': 'rt-sheet', 'aria-haspopup': 'dialog' });
     stack.appendChild(prog);
+    var hl = null;
+    if (cfg.highlight && cfg.highlight.cards && doc.querySelector(cfg.highlight.cards)) hl = mountHighlight(stack, getCfg);
     doc.body.appendChild(stack);
     var spacer = el('div', { 'data-rt-corner-spacer': '1', 'aria-hidden': 'true', style: 'height:130px' });
     doc.body.appendChild(spacer);
@@ -1391,10 +1515,10 @@
     }
     chrome = {
       stack: stack, place: place, open: openSheet, close: closeSheet, corner: function () { return corner; },
-      refresh: function () { label(); if (sheet) { closeSheet(false); openSheet(); } },
+      refresh: function () { if (hl) hl.mark(); label(); if (sheet) { closeSheet(false); openSheet(); } },
       destroy: function () {
         closeSheet(false); stack.remove(); spacer.remove();
-        timers.forEach(clearTimeout); if (mo) mo.disconnect(); clearTimeout(moT);
+        timers.forEach(clearTimeout); if (mo) mo.disconnect(); clearTimeout(moT); if (hl) hl.destroy();
         doc.removeEventListener('keydown', onKey); doc.removeEventListener('mousedown', onDown); doc.removeEventListener('touchstart', onDown);
         global.removeEventListener('resize', onResize); global.removeEventListener('scroll', onScroll);
         chrome = null;
@@ -1512,7 +1636,7 @@
     notificationSupport: notificationSupport, enableReminders: enableReminders, disableReminders: disableReminders,
     reminderDelay: reminderDelay,
     popoverDue: popoverDue, markPopoverShown: markPopoverShown, setPopoverOnLoad: setPopoverOnLoad,
-    activity: activity, nextMilestone: nextMilestone, milestoneProgress: milestoneProgress, pickCorner: pickCorner,
+    activity: activity, nextMilestone: nextMilestone, milestoneProgress: milestoneProgress, pickCorner: pickCorner, isLongPage: isLongPage, nextHighlight: nextHighlight,
     ui: { injectStyles: injectStyles, agoBadge: agoBadge, catBadge: catBadge, decorate: decorate, banner: banner,
       scheduleReminder: scheduleReminder, renderHome: renderHome, renderMarkComplete: renderMarkComplete, renderDiary: renderDiary,
       renderProgress: renderProgress, mountChrome: mountChrome, welcome: maybeWelcome, occupiedRects: occupiedRects, refreshChrome: function () { if (chrome) chrome.refresh(); } }

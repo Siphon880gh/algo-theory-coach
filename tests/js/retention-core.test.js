@@ -285,3 +285,18 @@ test('milestoneProgress: badge progress, module progress, streak steps', () => {
   const s = C.milestoneProgress(r, at('2026-11-01'), { badges: false });
   assert.deepStrictEqual([s.name, s.have, s.need], ['3-day streak', 1, 3]);
 });
+
+test('isLongPage: a second Complete control at the top only past about 1.5 viewports', () => {
+  assert.strictEqual(C.isLongPage(1000, 860), false);
+  assert.strictEqual(C.isLongPage(1290, 860), false);
+  assert.strictEqual(C.isLongPage(1300, 860), true);
+  assert.strictEqual(C.isLongPage(4000, 1180), true);
+});
+
+test('nextHighlight: learned, then not yet learned, then off; junk starts the cycle', () => {
+  assert.strictEqual(C.nextHighlight('none'), 'learned');
+  assert.strictEqual(C.nextHighlight('learned'), 'unlearned');
+  assert.strictEqual(C.nextHighlight('unlearned'), 'none');
+  assert.strictEqual(C.nextHighlight('bogus'), 'learned');
+  assert.strictEqual(C.nextHighlight(null), 'learned');
+});
