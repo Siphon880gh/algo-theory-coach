@@ -11,7 +11,9 @@ namespace TheoryCore;
 final class ProgressSchema
 {
     public const KEY = 'theory_core_progress_v1';
-    public const VERSION = 1;
+    public const VERSION = 2;
+    /** Versions that load without recovery (v1 migrates by gaining `retention`). */
+    public const MIGRATABLE = [1, 2];
     public const PATH_BEGINNER = 'beginner';
 
     /** @var list<string> */
@@ -53,7 +55,8 @@ final class ProgressSchema
      *   scores: array<string, mixed>,
      *   latencies: array<string, mixed>,
      *   caseGateOpen: bool,
-     *   recovery: bool
+     *   recovery: bool,
+     *   retention: array<string, mixed>|null
      * }
      */
     public static function fresh(bool $recovery = false): array
@@ -82,6 +85,7 @@ final class ProgressSchema
             'latencies' => [],
             'caseGateOpen' => false,
             'recovery' => $recovery,
+            'retention' => null,
         ];
     }
 
@@ -118,7 +122,7 @@ final class ProgressSchema
     {
         $base = self::fresh(false);
         $version = $data['version'] ?? null;
-        if ($version !== self::VERSION) {
+        if (!in_array($version, self::MIGRATABLE, true)) {
             // Unknown / missing version → treat as corrupt recovery to known schema.
             $recovered = self::fresh(true);
             // Keep pathId if it looks sane.
@@ -144,6 +148,10 @@ final class ProgressSchema
         }
         if (isset($data['latencies']) && is_array($data['latencies'])) {
             $out['latencies'] = $data['latencies'];
+        }
+        // Learning retention (pace, completion log, streak, review, reminder) is written by assets/js/retention.js.
+        if (isset($data['retention']) && is_array($data['retention'])) {
+            $out['retention'] = $data['retention'];
         }
         if (isset($data['milestones']) && is_array($data['milestones'])) {
             foreach ($out['milestones'] as $id => $row) {

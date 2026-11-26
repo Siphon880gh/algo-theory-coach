@@ -68,4 +68,44 @@ final class ProgressSchemaTest extends TestCase
         $this->assertSame('beginner', $fresh['pathId']);
         $this->assertSame($expected, array_keys($fresh['milestones']));
     }
+
+    public function testV1DocumentMigratesToV2WithoutRecoveryAndKeepsProgress(): void
+    {
+        $v1 = ['version' => 1, 'pathId' => 'beginner', 'milestones' => ['beginner:arrays' => ['guideRead' => true]], 'scores' => ['x' => 1]];
+        $state = ProgressSchema::decode(json_encode($v1, JSON_THROW_ON_ERROR));
+
+        $this->assertSame(2, $state['version']);
+        $this->assertFalse($state['recovery']);
+        $this->assertTrue($state['milestones']['beginner:arrays']['guideRead']);
+        $this->assertSame(['x' => 1], $state['scores']);
+        $this->assertNull($state['retention']);
+    }
+
+    public function testRetentionObjectSurvivesRoundTrip(): void
+    {
+        $fixture = ProgressSchema::fresh();
+        $fixture['retention'] = [
+            'pace' => ['lessonsPerDay' => 1, 'quizzesPerDay' => 1, 'since' => '2026-11-26'],
+            'completions' => ['guide:arrays' => ['completedAt' => '2026-11-26T09:00:00-08:00', 'title' => 'Arrays', 'path' => ['Data structures']]],
+            'history' => [['unitId' => 'guide:arrays', 'at' => '2026-11-26T09:00:00-08:00', 'kind' => 'lesson', 'first' => true]],
+        ];
+        $back = ProgressSchema::roundTrip($fixture);
+
+        $this->assertSame('2026-11-26T09:00:00-08:00', $back['retention']['completions']['guide:arrays']['completedAt']);
+        $this->assertSame(['Data structures'], $back['retention']['completions']['guide:arrays']['path']);
+    }
+
+    public function testUnknownFutureVersionResetsWithRecovery(): void
+    {
+        $state = ProgressSchema::decode('{"version":3,"pathId":"beginner"}');
+        $this->assertTrue($state['recovery']);
+        $this->assertNull($state['retention']);
+    }
+
+    public function testProgressJsMirrorsVersionAndKeepsRetention(): void
+    {
+        $src = (string) file_get_contents(dirname(__DIR__) . '/assets/js/progress.js');
+        $this->assertStringContainsString('var VERSION = ' . ProgressSchema::VERSION . ';', $src);
+        $this->assertStringContainsString('decoded.retention', $src);
+    }
 }

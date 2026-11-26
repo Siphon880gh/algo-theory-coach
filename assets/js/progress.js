@@ -3,7 +3,7 @@
  *
  * Storage key and fields MUST match src/ProgressSchema.php:
  *   KEY: theory_core_progress_v1
- *   version: 1
+ *   version: 2 (v1 documents migrate on load; v2 adds `retention`)
  *   pathId: string (default "beginner")
  *   milestones: { "beginner:<slug>": { status, guideRead, coachComplete,
  *     quizSubmitted, quizScore, quizAccuracy, drillAccuracy,
@@ -12,6 +12,7 @@
  *   latencies: object
  *   caseGateOpen: boolean
  *   recovery: boolean
+ *   retention: object (learning-retention skill: pace, completions log, streak, review, reminder)
  *
  * This file is the only writer of theory_core_progress_v1.
  */
@@ -19,7 +20,8 @@
   'use strict';
 
   var KEY = 'theory_core_progress_v1';
-  var VERSION = 1;
+  var VERSION = 2;
+  var MIGRATABLE = { 1: true, 2: true };
   var PATH_BEGINNER = 'beginner';
   var BEGINNER_LEARNING_ORDER = [
     'arrays',
@@ -65,7 +67,8 @@
       scores: {},
       latencies: {},
       caseGateOpen: false,
-      recovery: !!recovery
+      recovery: !!recovery,
+      retention: null
     };
   }
 
@@ -79,7 +82,7 @@
     } catch (e) {
       return fresh(true);
     }
-    if (!decoded || typeof decoded !== 'object' || decoded.version !== VERSION) {
+    if (!decoded || typeof decoded !== 'object' || !MIGRATABLE[decoded.version]) {
       return fresh(true);
     }
     var out = fresh(false);
@@ -88,6 +91,9 @@
     if (typeof decoded.recovery === 'boolean') out.recovery = decoded.recovery;
     if (decoded.scores && typeof decoded.scores === 'object') out.scores = decoded.scores;
     if (decoded.latencies && typeof decoded.latencies === 'object') out.latencies = decoded.latencies;
+    if (decoded.retention && typeof decoded.retention === 'object' && !Array.isArray(decoded.retention)) {
+      out.retention = global.RetentionCore ? global.RetentionCore.normalize(decoded.retention) : decoded.retention;
+    }
     if (decoded.milestones && typeof decoded.milestones === 'object') {
       Object.keys(out.milestones).forEach(function (id) {
         if (decoded.milestones[id] && typeof decoded.milestones[id] === 'object') {
