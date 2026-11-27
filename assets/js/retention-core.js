@@ -1060,6 +1060,19 @@
     '.rt-ui .rt-cbtn:hover,.rt-cbtn.rt-ui:hover{border-color:var(--rt-accent);transform:translateY(-1px)}',
     '.rt-ui .rt-cbtn:active,.rt-cbtn.rt-ui:active{transform:translateY(0)}',
     '.rt-ui .rt-cbtn--icon,.rt-cbtn--icon.rt-ui{padding:0;width:46px}',
+    '.rt-ui .rt-cbtn.rt-xb,.rt-cbtn.rt-xb.rt-ui{position:relative;padding:0;width:auto;min-width:46px;justify-content:flex-start;gap:0;transition:transform .18s cubic-bezier(.16,1,.3,1),border-color .18s,box-shadow .18s}',
+    '.rt-ui .rt-xb .rt-ic{flex:0 0 44px;width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center}',
+    '.rt-ui .rt-xb .rt-lbl{display:inline-flex;align-items:center;gap:5px;max-width:0;opacity:0;overflow:hidden;white-space:nowrap;padding-right:0;font-size:14px;font-weight:600;color:var(--rt-heading);transition:max-width .26s cubic-bezier(.16,1,.3,1),opacity .18s ease-out,padding .26s cubic-bezier(.16,1,.3,1)}',
+    '.rt-ui .rt-xb[data-rt-open="1"] .rt-lbl{max-width:240px;opacity:1;padding-right:16px}',
+    '.rt-ui .rt-xb[data-rt-open="1"]{border-color:var(--rt-accent)}',
+    '.rt-ui .rt-xb .rt-count{flex:none;margin:0 10px 0 -6px;padding:3px 7px;border-radius:999px;font:700 12.5px/1 var(--rt-font,inherit);font-variant-numeric:tabular-nums;color:#fff;background:var(--rt-tone-low)}',
+    '.rt-ui .rt-xb .rt-count[data-rt-tone=mid]{background:var(--rt-tone-mid)}',
+    '.rt-ui .rt-xb .rt-count[data-rt-tone=high]{background:var(--rt-tone-high)}',
+    '.rt-ui .rt-xb[data-rt-open="1"] .rt-count{display:none}',
+    '.rt-ui{--rt-tone-low:#b42318;--rt-tone-mid:#b54708;--rt-tone-high:#067647}',
+    '.rt-ui .rt-xb .rt-badge{position:absolute;top:-5px;right:-5px;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:var(--rt-accent);color:var(--rt-accent-ink,#fff);font:700 11px/19px var(--rt-font,inherit);text-align:center;font-variant-numeric:tabular-nums;box-shadow:0 0 0 2px var(--rt-surface);transition:opacity .15s}',
+    '.rt-ui .rt-xb[data-rt-open="1"] .rt-badge{opacity:0}',
+    '.rt-ui .rt-corner--bottom-left .rt-xb .rt-badge{right:auto;left:30px}',
     '.rt-ui .rt-cbtn .rt-flame,.rt-cbtn.rt-ui .rt-flame{color:var(--rt-warm)}',
     '.rt-ui .rt-cbtn[data-rt-cold] .rt-flame,.rt-cbtn.rt-ui[data-rt-cold] .rt-flame{color:var(--rt-muted)}',
     '.rt-ui .rt-cbtn .rt-num,.rt-cbtn.rt-ui .rt-num{font-variant-numeric:tabular-nums;font-size:16px;letter-spacing:-.01em}',
@@ -1106,8 +1119,7 @@
     '.rt-ui .rt-actions,.rt-actions.rt-ui{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}',
     '.rt-ui label{flex-direction:row;margin:0}',
     '.rt-ui .rt-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
-    '.rt-ui .rt-hl-btn .rt-hl-text{font-size:13.5px;font-weight:600;color:var(--rt-heading)}',
-    '.rt-ui .rt-hl-btn[data-rt-hl-mode=none] .rt-hl-text{color:var(--rt-muted)}',
+    '.rt-ui .rt-hl-btn[data-rt-hl-mode=none] svg{color:var(--rt-muted)}',
     '.rt-ui .rt-hl-btn[aria-pressed=true]{border-color:color-mix(in srgb,var(--rt-accent) 60%,var(--rt-line))}',
     '.rt-ui .rt-hl-btn[aria-pressed=true] svg{color:var(--rt-accent)}',
     'html[data-rt-hl=learned] [data-rt-learned="1"],html[data-rt-hl=unlearned] [data-rt-learned="0"]{box-shadow:0 0 0 2px var(--rt-accent),0 0 26px 4px color-mix(in srgb,var(--rt-accent) 42%,transparent)!important;transition:box-shadow .25s ease-out;position:relative;z-index:1}',
@@ -1368,14 +1380,19 @@
   /** Browse-style highlight: none -> learned -> not yet learned -> none. */
   var HL_MODES = ['none', 'learned', 'unlearned'];
   function nextHighlight(mode) { var i = HL_MODES.indexOf(mode); if (i < 0) i = 0; return HL_MODES[(i + 1) % HL_MODES.length]; }
-  var HL_TEXT = { none: 'Highlight off', learned: 'Learned', unlearned: 'Not yet learned' };
+  var HL_TEXT = { none: 'Highlight: off', learned: 'Highlight: learned', unlearned: 'Highlight: not learned' };
   var HL_NEXT = { none: 'highlight learned cards', learned: 'highlight cards not yet learned', unlearned: 'turn highlighting off' };
 
+  /** Streak colour band for the collapsed corner count: 0-2 days low (red), 3-4 mid (orange), 5+ high (green). */
+  function streakTone(days) {
+    var n = Number(days) || 0;
+    return n <= 2 ? 'low' : n <= 4 ? 'mid' : 'high';
+  }
   function mountHighlight(stack, getCfg) {
     var hc = getCfg().highlight, key = hc.key || 'rt-highlight-v1';
     var mode = 'none'; try { mode = global.localStorage.getItem(key) || 'none'; } catch (e) { mode = 'none'; }
     if (HL_MODES.indexOf(mode) < 0) mode = 'none';
-    var btn = el('button', { type: 'button', class: 'rt-cbtn rt-hl-btn', 'data-rt-highlight-btn': '1' });
+    var btn = el('button', { type: 'button', class: 'rt-cbtn rt-xb rt-hl-btn', 'data-rt-highlight-btn': '1' });
     var live = el('span', { class: 'rt-sr', 'aria-live': 'polite' });
     stack.insertBefore(btn, stack.firstChild);
     stack.appendChild(live);
@@ -1393,11 +1410,11 @@
       var c = mark();
       if (mode === 'none') doc.documentElement.setAttribute('data-rt-hl', 'none'); else doc.documentElement.setAttribute('data-rt-hl', mode);
       btn.textContent = '';
-      btn.appendChild(icon(mode === 'none' ? 'glowoff' : 'glow'));
-      btn.appendChild(el('span', { class: 'rt-cap rt-hl-text', text: HL_TEXT[mode] }));
+      btn.appendChild(el('span', { class: 'rt-ic', 'aria-hidden': 'true' }, [icon(mode === 'none' ? 'glowoff' : 'glow')]));
+      btn.appendChild(el('span', { class: 'rt-lbl rt-hl-text', 'aria-hidden': 'true', text: HL_TEXT[mode] }));
       btn.setAttribute('data-rt-hl-mode', mode);
       btn.setAttribute('aria-pressed', mode === 'none' ? 'false' : 'true');
-      btn.setAttribute('aria-label', 'Highlight: ' + (mode === 'none' ? 'off' : mode === 'learned' ? 'learned cards' : 'cards not yet learned') + '. Click to ' + HL_NEXT[mode]);
+      btn.setAttribute('aria-label', HL_TEXT[mode] + '. Click to ' + HL_NEXT[mode]);
       if (announce) live.textContent = mode === 'none' ? 'Highlighting off' : (mode === 'learned' ? c.learned + ' of ' + c.n + ' learned' : (c.n - c.learned) + ' of ' + c.n + ' not yet learned');
     }
     btn.addEventListener('click', function () { mode = nextHighlight(mode); try { global.localStorage.setItem(key, mode); } catch (e) { /* private mode */ } draw(true); });
@@ -1405,7 +1422,7 @@
     var root = hc.root ? doc.querySelector(hc.root) : doc.querySelector('main') || doc.body;
     if (mo && root) mo.observe(root, { childList: true, subtree: true });
     draw(false);
-    return { mark: function () { draw(false); }, destroy: function () { if (mo) mo.disconnect(); btn.remove(); live.remove(); doc.documentElement.removeAttribute('data-rt-hl'); } };
+    return { btn: btn, mark: function () { draw(false); }, destroy: function () { if (mo) mo.disconnect(); btn.remove(); live.remove(); doc.documentElement.removeAttribute('data-rt-hl'); } };
   }
 
   function mountChrome(cfgIn) {
@@ -1416,13 +1433,45 @@
     if (chrome) chrome.destroy();
     var stack = el('div', { class: 'rt-ui rt-corner', 'data-rt-corner': '1', role: 'group', 'aria-label': 'Learning progress' });
     var diaryBtn = null;
-    if (cfg.diaryHref) { diaryBtn = el('a', { class: 'rt-cbtn rt-cbtn--icon rt-tip', href: cfg.diaryHref, 'data-rt-diary-btn': '1', 'aria-label': 'Open diary', 'data-tip': 'Diary' }, [icon('book')]); stack.appendChild(diaryBtn); }
-    var prog = el('button', { type: 'button', class: 'rt-cbtn', 'data-rt-progress-btn': '1', 'aria-expanded': 'false', 'aria-controls': 'rt-sheet', 'aria-haspopup': 'dialog' });
+    if (cfg.diaryHref) { diaryBtn = el('a', { class: 'rt-cbtn rt-xb', href: cfg.diaryHref, 'data-rt-diary-btn': '1', 'aria-label': 'Diary: every item you have completed' }, [el('span', { class: 'rt-ic', 'aria-hidden': 'true' }, [icon('book')]), el('span', { class: 'rt-lbl', 'aria-hidden': 'true', text: 'Diary' })]); stack.appendChild(diaryBtn); }
+    var prog = el('button', { type: 'button', class: 'rt-cbtn rt-xb', 'data-rt-progress-btn': '1', 'aria-expanded': 'false', 'aria-controls': 'rt-sheet', 'aria-haspopup': 'dialog' });
     stack.appendChild(prog);
     var hl = null;
     var hlWait = null, hlWaitT = null;
     if (cfg.highlight && cfg.highlight.cards && doc.querySelector(cfg.highlight.cards)) hl = mountHighlight(stack, getCfg);
     doc.body.appendChild(stack);
+    // Icon circles that expand to their label on hover, focus or tap. Only one is open at a time.
+    var openT = null, lastTouch = 0;
+    function expand(b) {
+      clearTimeout(openT);
+      Array.prototype.forEach.call(stack.querySelectorAll('.rt-xb[data-rt-open]'), function (o) { if (o !== b) o.removeAttribute('data-rt-open'); });
+      Array.prototype.forEach.call(stack.querySelectorAll('[data-rt-was-open]'), function (o) { if (o !== b) o.removeAttribute('data-rt-was-open'); });
+      if (b) b.setAttribute('data-rt-open', '1');
+    }
+    function collapseSoon() {
+      clearTimeout(openT);
+      openT = setTimeout(function () {
+        var keep = doc.activeElement && stack.contains(doc.activeElement) && doc.activeElement.matches && doc.activeElement.matches(':focus-visible') ? doc.activeElement : null;
+        expand(keep);
+      }, 280);
+    }
+    function wire(b) {
+      if (!b || b.getAttribute('data-rt-wired')) return;
+      b.setAttribute('data-rt-wired', '1');
+      b.addEventListener('pointerenter', function (e) { if (e.pointerType !== 'touch') expand(b); });
+      b.addEventListener('pointerleave', function (e) { if (e.pointerType !== 'touch') collapseSoon(); });
+      b.addEventListener('pointerdown', function (e) { if (e.pointerType === 'touch') lastTouch = Date.now(); });
+      b.addEventListener('focus', function () { expand(b); });
+      b.addEventListener('blur', collapseSoon);
+      // Touch: the first tap only opens the label; a second tap acts.
+      b.addEventListener('click', function (e) {
+        if (Date.now() - lastTouch < 800 && !b.getAttribute('data-rt-was-open')) { e.preventDefault(); e.stopImmediatePropagation(); expand(b); b.setAttribute('data-rt-was-open', '1'); return; }
+        b.removeAttribute('data-rt-was-open');
+      }, true);
+    }
+    function onOutside(e) { if (!stack.contains(e.target)) { expand(null); Array.prototype.forEach.call(stack.querySelectorAll('[data-rt-was-open]'), function (o) { o.removeAttribute('data-rt-was-open'); }); } }
+    doc.addEventListener('pointerdown', onOutside, true);
+    wire(diaryBtn); wire(prog); if (hl) wire(hl.btn);
     // Cards drawn later (fetched lists): add the highlight button once the first card appears.
     function stopHlWait() { if (hlWait) hlWait.disconnect(); hlWait = null; clearTimeout(hlWaitT); }
     if (!hl && cfg.highlight && cfg.highlight.cards && global.MutationObserver) {
@@ -1431,6 +1480,7 @@
         if (hl || !c.highlight || !doc.querySelector(c.highlight.cards)) return;
         stopHlWait();
         hl = mountHighlight(stack, getCfg);
+        wire(hl.btn);
         place();
       });
       hlWait.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-rt-unit', 'class'] });
@@ -1445,12 +1495,14 @@
 
     function label() {
       var s = streak(getCfg().get());
+      var days = s.current === 1 ? 'day' : 'days';
       prog.textContent = '';
-      prog.appendChild(icon('flame', 'rt-flame'));
-      prog.appendChild(el('span', { class: 'rt-num', 'aria-hidden': 'true', text: String(s.current) }));
-      prog.appendChild(el('span', { class: 'rt-cap', 'aria-hidden': 'true', text: s.current === 1 ? 'day' : 'days' }));
+      prog.appendChild(el('span', { class: 'rt-ic', 'aria-hidden': 'true' }, [icon('flame', 'rt-flame')]));
+      prog.appendChild(el('span', { class: 'rt-lbl', 'aria-hidden': 'true' }, [el('span', { text: 'Streak' }), el('span', { class: 'rt-num', text: String(s.current) }), el('span', { class: 'rt-cap', text: days })]));
+      prog.insertBefore(el('span', { class: 'rt-count', 'aria-hidden': 'true', 'data-rt-tone': streakTone(s.current), text: '(' + s.current + ')' }), prog.lastChild);
+      prog.setAttribute('data-rt-tone', streakTone(s.current));
       if (s.current === 0) prog.setAttribute('data-rt-cold', '1'); else prog.removeAttribute('data-rt-cold');
-      prog.setAttribute('aria-label', 'Progress: ' + s.current + '-day streak. Open pace, streak and milestones');
+      prog.setAttribute('aria-label', 'Streak ' + s.current + ' ' + days + '. Open pace, streak and milestones');
       prog.setAttribute('data-rt-streak', String(s.current));
     }
     function place() {
@@ -1533,6 +1585,7 @@
       destroy: function () {
         closeSheet(false); stack.remove(); spacer.remove();
         timers.forEach(clearTimeout); if (mo) mo.disconnect(); clearTimeout(moT); stopHlWait(); if (hl) hl.destroy();
+        doc.removeEventListener('pointerdown', onOutside, true); clearTimeout(openT);
         doc.removeEventListener('keydown', onKey); doc.removeEventListener('mousedown', onDown); doc.removeEventListener('touchstart', onDown);
         global.removeEventListener('resize', onResize); global.removeEventListener('scroll', onScroll);
         chrome = null;
@@ -1674,7 +1727,7 @@
     notificationSupport: notificationSupport, enableReminders: enableReminders, disableReminders: disableReminders,
     reminderDelay: reminderDelay,
     popoverDue: popoverDue, markPopoverShown: markPopoverShown, setPopoverOnLoad: setPopoverOnLoad,
-    activity: activity, nextMilestone: nextMilestone, milestoneProgress: milestoneProgress, pickCorner: pickCorner, isLongPage: isLongPage, nextHighlight: nextHighlight,
+    activity: activity, nextMilestone: nextMilestone, milestoneProgress: milestoneProgress, pickCorner: pickCorner, isLongPage: isLongPage, nextHighlight: nextHighlight, streakTone: streakTone,
     ui: { injectStyles: injectStyles, agoBadge: agoBadge, catBadge: catBadge, decorate: decorate, banner: banner,
       scheduleReminder: scheduleReminder, renderHome: renderHome, renderMarkComplete: renderMarkComplete, renderDiary: renderDiary,
       renderProgress: renderProgress, mountChrome: mountChrome, welcome: maybeWelcome, occupiedRects: occupiedRects, refreshChrome: function () { if (chrome) chrome.refresh(); } }

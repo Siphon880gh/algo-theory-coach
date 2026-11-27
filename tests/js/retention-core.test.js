@@ -300,3 +300,9 @@ test('nextHighlight: learned, then not yet learned, then off; junk starts the cy
   assert.strictEqual(C.nextHighlight('bogus'), 'learned');
   assert.strictEqual(C.nextHighlight(null), 'learned');
 });
+
+// ---- v16: collapsed streak count colour bands
+test('streak tone: 0-2 days red (low), 3-4 orange (mid), 5+ green (high)', () => {
+  assert.deepStrictEqual([0, 1, 2, 3, 4, 5, 6, 30].map(C.streakTone), ['low', 'low', 'low', 'mid', 'mid', 'high', 'high', 'high']);
+  assert.strictEqual(C.streakTone(undefined), 'low');
+});
